@@ -131,9 +131,9 @@ type CommitPlan struct {
 	// (full paint / shrink / geometry re-base), not merely extended.
 	Resliced bool
 
-	// ShrinkOrCursorTail is the shrink-into-prefix / short focused-cursor-tail
-	// branch: CommittedRows is forced to ChunkTo and prefix is re-sliced from
-	// the frame before emit.
+	// ShrinkOrCursorTail is the shrink-into-prefix, in-place viewport reveal,
+	// or short focused-cursor-tail branch: CommittedRows is forced to ChunkTo
+	// and prefix is re-sliced from the frame before emit.
 	ShrinkOrCursorTail bool
 
 	// GeometryRebase is the mux/in-place geometry path: prefix is re-sliced
@@ -210,13 +210,17 @@ func (s *State) PlanCommit(in PlanInput) CommitPlan {
 	plan.Kind = PlanUpdate
 	committed := s.CommittedRows
 
-	// Shrink into committed prefix, or resync left a focused cursor tail
-	// shorter than the viewport: re-show the frame tail.
+	// Shrink into committed prefix, reveal rows above the committed seam after
+	// an in-place viewport expansion, or re-show a short focused cursor tail.
+	// Revealed history is re-anchored (duplication, never loss); otherwise a
+	// forced window rewrite would clear it and repaint only the live tail.
+	targetWindowTop := max(0, frameLen-height)
 	if frameLen <= committed ||
+		(in.GeometryChanged && in.ResizeRepaintsInPlace && targetWindowTop < committed) ||
 		(in.CommittedRowsResynced &&
 			frameLen-committed < height &&
 			in.HasFocusedCursorTail) {
-		plan.WindowTop = max(0, frameLen-height)
+		plan.WindowTop = targetWindowTop
 		plan.ChunkTo = plan.WindowTop
 		plan.Resliced = true
 		plan.ShrinkOrCursorTail = true

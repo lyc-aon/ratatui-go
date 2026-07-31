@@ -158,6 +158,45 @@ func TestForceWindowRewriteAndResize(t *testing.T) {
 	}
 }
 
+func TestInPlaceResizeRevealsCommittedRows(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	e := renderer.New(&buf, renderer.Caps{
+		Multiplexer:           true,
+		ResizeRepaintsInPlace: true,
+	})
+	lines := []string{
+		"header",
+		"working-directory",
+		"",
+		"tip",
+		"border-top",
+		"editor",
+		"border-bottom",
+		"footer",
+	}
+	draw(t, e, lines, 1, 1, renderer.ReasonForce)
+	if got, want := e.CommittedRows(), len(lines)-1; got != want {
+		t.Fatalf("initial committed rows = %d, want %d", got, want)
+	}
+
+	buf.Reset()
+	e.MarkResizeEvent()
+	draw(t, e, lines, 110, 40, renderer.ReasonResize)
+	out := buf.String()
+	for _, want := range []string{"header", "tip", "editor", "footer"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expanded viewport omitted %q: %q", want, out)
+		}
+	}
+	if got := e.WindowTop(); got != 0 {
+		t.Fatalf("window top after expansion = %d, want 0", got)
+	}
+	if got := e.CommittedRows(); got != 0 {
+		t.Fatalf("committed rows after expansion = %d, want re-anchored 0", got)
+	}
+}
+
 func TestReplaceReasonFullPaint(t *testing.T) {
 	t.Parallel()
 	var buf bytes.Buffer
