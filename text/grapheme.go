@@ -3,7 +3,7 @@ package text
 import (
 	"unicode"
 
-	"github.com/michaelkelly/ratatui-go/style"
+	"github.com/lyc-aon/ratatui-go/style"
 )
 
 const (

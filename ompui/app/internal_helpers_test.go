@@ -7,14 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/michaelkelly/ratatui-go/ompui/client"
-	"github.com/michaelkelly/ratatui-go/ompui/component"
-	"github.com/michaelkelly/ratatui-go/ompui/editor"
-	"github.com/michaelkelly/ratatui-go/ompui/event"
-	"github.com/michaelkelly/ratatui-go/ompui/interact"
-	"github.com/michaelkelly/ratatui-go/ompui/protocol"
-	"github.com/michaelkelly/ratatui-go/ompui/renderer"
-	"github.com/michaelkelly/ratatui-go/ompui/view"
+	"github.com/lyc-aon/ratatui-go/ompui/client"
+	"github.com/lyc-aon/ratatui-go/ompui/component"
+	"github.com/lyc-aon/ratatui-go/ompui/editor"
+	"github.com/lyc-aon/ratatui-go/ompui/event"
+	"github.com/lyc-aon/ratatui-go/ompui/interact"
+	"github.com/lyc-aon/ratatui-go/ompui/protocol"
+	"github.com/lyc-aon/ratatui-go/ompui/renderer"
+	"github.com/lyc-aon/ratatui-go/ompui/view"
 )
 
 // Tests in package app can exercise unexported helpers without a TTY.

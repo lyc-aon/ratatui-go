@@ -1,6 +1,6 @@
 package widgets
 
-import "github.com/michaelkelly/ratatui-go/style"
+import "github.com/lyc-aon/ratatui-go/style"
 
 // MapResolution selects coastline point density for Map.
 type MapResolution int

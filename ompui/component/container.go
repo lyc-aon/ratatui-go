@@ -1,6 +1,6 @@
 package component
 
-import "github.com/michaelkelly/ratatui-go/ompui/event"
+import "github.com/lyc-aon/ratatui-go/ompui/event"
 
 // Container is a retained component that vertically stacks children.
 //

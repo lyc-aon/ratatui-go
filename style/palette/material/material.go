@@ -1,6 +1,6 @@
 package material
 
-import "github.com/michaelkelly/ratatui-go/style"
+import "github.com/lyc-aon/ratatui-go/style"
 
 // AccentedPalette contains variants C50..C900 and A100/A200/A400/A700.
 type AccentedPalette struct {

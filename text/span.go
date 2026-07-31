@@ -3,7 +3,7 @@ package text
 import (
 	"strings"
 
-	"github.com/michaelkelly/ratatui-go/style"
+	"github.com/lyc-aon/ratatui-go/style"
 )
 
 // Span is a contiguous run of text sharing one style.

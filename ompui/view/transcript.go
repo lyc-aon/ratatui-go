@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/michaelkelly/ratatui-go/ompui/component"
-	"github.com/michaelkelly/ratatui-go/ompui/model"
+	"github.com/lyc-aon/ratatui-go/ompui/component"
+	"github.com/lyc-aon/ratatui-go/ompui/model"
 )
 
 // tailHoldback is the number of trailing rows of a live block never offered as

@@ -8,10 +8,10 @@ package terminal
 import (
 	"fmt"
 
-	"github.com/michaelkelly/ratatui-go/backend"
-	"github.com/michaelkelly/ratatui-go/buffer"
-	"github.com/michaelkelly/ratatui-go/layout"
-	"github.com/michaelkelly/ratatui-go/widget"
+	"github.com/lyc-aon/ratatui-go/backend"
+	"github.com/lyc-aon/ratatui-go/buffer"
+	"github.com/lyc-aon/ratatui-go/layout"
+	"github.com/lyc-aon/ratatui-go/widget"
 )
 
 // Viewport controls where the terminal draws.

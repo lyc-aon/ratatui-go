@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/michaelkelly/ratatui-go/ompui/model"
+	"github.com/lyc-aon/ratatui-go/ompui/model"
 )
 
 // rpcInputHint is the JSON shape of model.AvailableCommand.Input.

@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/michaelkelly/ratatui-go/ompui/event"
-	"github.com/michaelkelly/ratatui-go/ompui/input"
-	"github.com/michaelkelly/ratatui-go/ompui/termcaps"
+	"github.com/lyc-aon/ratatui-go/ompui/event"
+	"github.com/lyc-aon/ratatui-go/ompui/input"
+	"github.com/lyc-aon/ratatui-go/ompui/termcaps"
 )
 
 // Terminal is the sole TTY owner for the Go frontend.

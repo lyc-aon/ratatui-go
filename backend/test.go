@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/michaelkelly/ratatui-go/buffer"
-	"github.com/michaelkelly/ratatui-go/layout"
-	"github.com/michaelkelly/ratatui-go/text"
+	"github.com/lyc-aon/ratatui-go/buffer"
+	"github.com/lyc-aon/ratatui-go/layout"
+	"github.com/lyc-aon/ratatui-go/text"
 )
 
 // maxScrollbackLines caps retained scrollback height (matches Ratatui u16::MAX).

@@ -8,6 +8,6 @@
 // contribute scale × (explicit w or payload width). Tabs expand to
 // DefaultTabWidth cells. Grapheme clusters are never split.
 //
-// Depends only on github.com/michaelkelly/ratatui-go/text for grapheme cell
+// Depends only on github.com/lyc-aon/ratatui-go/text for grapheme cell
 // widths. This package is a leaf in the ompui graph.
 package ansitext

@@ -1,6 +1,6 @@
 package widgets
 
-import "github.com/michaelkelly/ratatui-go/text"
+import "github.com/lyc-aon/ratatui-go/text"
 
 // CellFromString creates a cell from a plain string (Ratatui Cell::from(&str)).
 func CellFromString(s string) Cell {

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/michaelkelly/ratatui-go/ompui/ansitext"
+	"github.com/lyc-aon/ratatui-go/ompui/ansitext"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	east "github.com/yuin/goldmark/extension/ast"

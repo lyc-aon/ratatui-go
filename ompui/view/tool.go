@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/michaelkelly/ratatui-go/ompui/ansitext"
-	"github.com/michaelkelly/ratatui-go/ompui/model"
+	"github.com/lyc-aon/ratatui-go/ompui/ansitext"
+	"github.com/lyc-aon/ratatui-go/ompui/model"
 )
 
 // ToolCard is the complete view state of one tool invocation: the call the

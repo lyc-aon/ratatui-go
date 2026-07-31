@@ -1,7 +1,7 @@
 package media
 
 import (
-	"github.com/michaelkelly/ratatui-go/ompui/termcaps"
+	"github.com/lyc-aon/ratatui-go/ompui/termcaps"
 )
 
 // RenderOptions configures RenderImage.

@@ -1,11 +1,11 @@
 package app
 
 import (
-	"github.com/michaelkelly/ratatui-go/ompui/client"
-	"github.com/michaelkelly/ratatui-go/ompui/component"
-	"github.com/michaelkelly/ratatui-go/ompui/event"
-	"github.com/michaelkelly/ratatui-go/ompui/interact"
-	"github.com/michaelkelly/ratatui-go/ompui/protocol"
+	"github.com/lyc-aon/ratatui-go/ompui/client"
+	"github.com/lyc-aon/ratatui-go/ompui/component"
+	"github.com/lyc-aon/ratatui-go/ompui/event"
+	"github.com/lyc-aon/ratatui-go/ompui/interact"
+	"github.com/lyc-aon/ratatui-go/ompui/protocol"
 )
 
 // cmd is one unit of work drained by the single app loop.

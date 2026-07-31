@@ -6,13 +6,13 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/michaelkelly/ratatui-go/ompui/client"
-	"github.com/michaelkelly/ratatui-go/ompui/component"
-	"github.com/michaelkelly/ratatui-go/ompui/editor"
-	"github.com/michaelkelly/ratatui-go/ompui/interact"
-	"github.com/michaelkelly/ratatui-go/ompui/protocol"
-	"github.com/michaelkelly/ratatui-go/ompui/renderer"
-	ompruntime "github.com/michaelkelly/ratatui-go/ompui/runtime"
+	"github.com/lyc-aon/ratatui-go/ompui/client"
+	"github.com/lyc-aon/ratatui-go/ompui/component"
+	"github.com/lyc-aon/ratatui-go/ompui/editor"
+	"github.com/lyc-aon/ratatui-go/ompui/interact"
+	"github.com/lyc-aon/ratatui-go/ompui/protocol"
+	"github.com/lyc-aon/ratatui-go/ompui/renderer"
+	ompruntime "github.com/lyc-aon/ratatui-go/ompui/runtime"
 )
 
 func (a *App) handleExtensionUI(ev client.Event) {

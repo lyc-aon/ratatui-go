@@ -7,13 +7,13 @@ import (
 	goruntime "runtime"
 	"time"
 
-	"github.com/michaelkelly/ratatui-go/ompui/client"
-	"github.com/michaelkelly/ratatui-go/ompui/component"
-	"github.com/michaelkelly/ratatui-go/ompui/event"
-	"github.com/michaelkelly/ratatui-go/ompui/input"
-	"github.com/michaelkelly/ratatui-go/ompui/protocol"
-	"github.com/michaelkelly/ratatui-go/ompui/renderer"
-	"github.com/michaelkelly/ratatui-go/ompui/termcaps"
+	"github.com/lyc-aon/ratatui-go/ompui/client"
+	"github.com/lyc-aon/ratatui-go/ompui/component"
+	"github.com/lyc-aon/ratatui-go/ompui/event"
+	"github.com/lyc-aon/ratatui-go/ompui/input"
+	"github.com/lyc-aon/ratatui-go/ompui/protocol"
+	"github.com/lyc-aon/ratatui-go/ompui/renderer"
+	"github.com/lyc-aon/ratatui-go/ompui/termcaps"
 )
 
 const terminalInputResponseTimeout = 500 * time.Millisecond

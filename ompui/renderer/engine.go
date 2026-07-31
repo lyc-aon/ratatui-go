@@ -5,9 +5,9 @@ import (
 	"io"
 	"sync"
 
-	"github.com/michaelkelly/ratatui-go/ompui/ansitext"
-	"github.com/michaelkelly/ratatui-go/ompui/component"
-	"github.com/michaelkelly/ratatui-go/ompui/ledger"
+	"github.com/lyc-aon/ratatui-go/ompui/ansitext"
+	"github.com/lyc-aon/ratatui-go/ompui/component"
+	"github.com/lyc-aon/ratatui-go/ompui/ledger"
 )
 
 // Engine is the normal-screen append-only scrollback renderer.

@@ -1,8 +1,8 @@
 package widgets
 
 import (
-	"github.com/michaelkelly/ratatui-go/buffer"
-	"github.com/michaelkelly/ratatui-go/layout"
+	"github.com/lyc-aon/ratatui-go/buffer"
+	"github.com/lyc-aon/ratatui-go/layout"
 )
 
 // Clear resets every cell in its area so later widgets can overdraw cleanly

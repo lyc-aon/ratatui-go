@@ -3,7 +3,7 @@ package runtime
 import (
 	"time"
 
-	"github.com/michaelkelly/ratatui-go/ompui/termcaps"
+	"github.com/lyc-aon/ratatui-go/ompui/termcaps"
 )
 
 // Appearance is the terminal-reported light/dark mode from OSC 11 luminance.

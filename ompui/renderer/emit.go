@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/michaelkelly/ratatui-go/ompui/ansitext"
+	"github.com/lyc-aon/ratatui-go/ompui/ansitext"
 )
 
 // byteBuf is a reusable frame write buffer. One batch per paint; one Write.

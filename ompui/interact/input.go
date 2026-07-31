@@ -1,11 +1,11 @@
 package interact
 
 import (
-	"github.com/michaelkelly/ratatui-go/ompui/ansitext"
-	"github.com/michaelkelly/ratatui-go/ompui/component"
-	"github.com/michaelkelly/ratatui-go/ompui/event"
-	"github.com/michaelkelly/ratatui-go/ompui/killring"
-	"github.com/michaelkelly/ratatui-go/ompui/textutil"
+	"github.com/lyc-aon/ratatui-go/ompui/ansitext"
+	"github.com/lyc-aon/ratatui-go/ompui/component"
+	"github.com/lyc-aon/ratatui-go/ompui/event"
+	"github.com/lyc-aon/ratatui-go/ompui/killring"
+	"github.com/lyc-aon/ratatui-go/ompui/textutil"
 	"github.com/rivo/uniseg"
 )
 

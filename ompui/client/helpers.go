@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/michaelkelly/ratatui-go/ompui/protocol"
+	"github.com/lyc-aon/ratatui-go/ompui/protocol"
 )
 
 // Prompt sends a prompt command and waits for the RPC response

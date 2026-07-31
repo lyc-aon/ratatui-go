@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/michaelkelly/ratatui-go/ompui/protocol"
+	"github.com/lyc-aon/ratatui-go/ompui/protocol"
 )
 
 // Apply reduces one protocol envelope into State. Unknown frames are retained

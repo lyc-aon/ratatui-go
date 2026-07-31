@@ -5,8 +5,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/michaelkelly/ratatui-go/backend"
-	"github.com/michaelkelly/ratatui-go/terminal"
+	"github.com/lyc-aon/ratatui-go/backend"
+	"github.com/lyc-aon/ratatui-go/terminal"
 )
 
 // DefaultTerminal is the default application terminal type returned by Init helpers.

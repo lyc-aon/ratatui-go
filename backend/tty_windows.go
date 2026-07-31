@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/michaelkelly/ratatui-go/layout"
+	"github.com/lyc-aon/ratatui-go/layout"
 	"golang.org/x/sys/windows"
 )
 

@@ -3,7 +3,7 @@ package widgets
 import (
 	"math"
 
-	"github.com/michaelkelly/ratatui-go/style"
+	"github.com/lyc-aon/ratatui-go/style"
 )
 
 // Points is a scatter of world-coordinate dots.

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/michaelkelly/ratatui-go/ompui/mermaid"
+	"github.com/lyc-aon/ratatui-go/ompui/mermaid"
 )
 
 func TestGraphLRRenders(t *testing.T) {

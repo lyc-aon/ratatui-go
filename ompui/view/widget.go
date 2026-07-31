@@ -1,6 +1,6 @@
 package view
 
-import "github.com/michaelkelly/ratatui-go/ompui/component"
+import "github.com/lyc-aon/ratatui-go/ompui/component"
 
 // widget is the shared plumbing behind every chrome component in this package:
 // a bound renderer plus a per-width row cache. Components build their rows on

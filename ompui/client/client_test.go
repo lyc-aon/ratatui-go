@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/michaelkelly/ratatui-go/ompui/client"
-	"github.com/michaelkelly/ratatui-go/ompui/protocol"
+	"github.com/lyc-aon/ratatui-go/ompui/client"
+	"github.com/lyc-aon/ratatui-go/ompui/protocol"
 )
 
 // fakeProcess is an in-memory Bun core stand-in. No shell, no OS child.

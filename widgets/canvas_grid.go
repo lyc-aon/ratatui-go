@@ -1,8 +1,8 @@
 package widgets
 
 import (
-	"github.com/michaelkelly/ratatui-go/style"
-	"github.com/michaelkelly/ratatui-go/symbols"
+	"github.com/lyc-aon/ratatui-go/style"
+	"github.com/lyc-aon/ratatui-go/symbols"
 )
 
 // layer is one saved canvas layer (row-major terminal cells).

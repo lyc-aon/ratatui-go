@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/michaelkelly/ratatui-go/buffer"
-	"github.com/michaelkelly/ratatui-go/layout"
-	"github.com/michaelkelly/ratatui-go/style"
+	"github.com/lyc-aon/ratatui-go/buffer"
+	"github.com/lyc-aon/ratatui-go/layout"
+	"github.com/lyc-aon/ratatui-go/style"
 )
 
 func TestANSIColorSequences(t *testing.T) {

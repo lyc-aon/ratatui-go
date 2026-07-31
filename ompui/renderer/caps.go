@@ -1,6 +1,6 @@
 package renderer
 
-import "github.com/michaelkelly/ratatui-go/ompui/termcaps"
+import "github.com/lyc-aon/ratatui-go/ompui/termcaps"
 
 // Caps are terminal capability decisions the emitter needs. The host supplies
 // them (from termcaps probes / env); the engine never sniffs the process env

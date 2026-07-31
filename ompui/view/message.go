@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/michaelkelly/ratatui-go/ompui/ansitext"
-	"github.com/michaelkelly/ratatui-go/ompui/component"
-	"github.com/michaelkelly/ratatui-go/ompui/media"
-	"github.com/michaelkelly/ratatui-go/ompui/model"
-	"github.com/michaelkelly/ratatui-go/ompui/richtext"
+	"github.com/lyc-aon/ratatui-go/ompui/ansitext"
+	"github.com/lyc-aon/ratatui-go/ompui/component"
+	"github.com/lyc-aon/ratatui-go/ompui/media"
+	"github.com/lyc-aon/ratatui-go/ompui/model"
+	"github.com/lyc-aon/ratatui-go/ompui/richtext"
 )
 
 // OSC 133 shell-integration zone markers around a user turn. The prompt-start

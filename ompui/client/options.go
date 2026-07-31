@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/michaelkelly/ratatui-go/ompui/protocol"
+	"github.com/lyc-aon/ratatui-go/ompui/protocol"
 )
 
 // Default queue / timeout knobs.

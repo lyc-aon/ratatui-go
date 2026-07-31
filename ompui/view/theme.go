@@ -4,9 +4,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/michaelkelly/ratatui-go/ompui/highlight"
-	"github.com/michaelkelly/ratatui-go/ompui/mermaid"
-	"github.com/michaelkelly/ratatui-go/ompui/richtext"
+	"github.com/lyc-aon/ratatui-go/ompui/highlight"
+	"github.com/lyc-aon/ratatui-go/ompui/mermaid"
+	"github.com/lyc-aon/ratatui-go/ompui/richtext"
 )
 
 // StyleFunc styles a fragment with ANSI and returns the result. A nil StyleFunc

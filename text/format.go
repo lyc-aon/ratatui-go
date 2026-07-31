@@ -3,7 +3,7 @@ package text
 import (
 	"fmt"
 
-	"github.com/michaelkelly/ratatui-go/style"
+	"github.com/lyc-aon/ratatui-go/style"
 )
 
 // Spanf builds an unstyled Span from a fmt format string (ratatui-macros span!).

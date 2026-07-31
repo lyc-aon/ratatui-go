@@ -3,9 +3,9 @@ package widgets
 import (
 	"strconv"
 
-	"github.com/michaelkelly/ratatui-go/buffer"
-	"github.com/michaelkelly/ratatui-go/layout"
-	"github.com/michaelkelly/ratatui-go/text"
+	"github.com/lyc-aon/ratatui-go/buffer"
+	"github.com/lyc-aon/ratatui-go/layout"
+	"github.com/lyc-aon/ratatui-go/text"
 )
 
 // LogoSize selects which Ratatui logo art to render.

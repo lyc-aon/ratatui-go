@@ -1,8 +1,8 @@
 package widgets
 
 import (
-	"github.com/michaelkelly/ratatui-go/layout"
-	"github.com/michaelkelly/ratatui-go/text"
+	"github.com/lyc-aon/ratatui-go/layout"
+	"github.com/lyc-aon/ratatui-go/text"
 )
 
 // wrappedLine is one reflowed output line ready for painting.

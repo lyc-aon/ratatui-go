@@ -1,6 +1,6 @@
 package component
 
-import "github.com/michaelkelly/ratatui-go/ompui/ansitext"
+import "github.com/lyc-aon/ratatui-go/ompui/ansitext"
 
 // BoundaryUnset marks an optional native-scrollback seam as absent.
 // Zero is a valid line index, so seams cannot use 0 as "missing".

@@ -1,10 +1,10 @@
 package app
 
 import (
-	"github.com/michaelkelly/ratatui-go/ompui/ansitext"
-	"github.com/michaelkelly/ratatui-go/ompui/component"
-	"github.com/michaelkelly/ratatui-go/ompui/interact"
-	"github.com/michaelkelly/ratatui-go/ompui/renderer"
+	"github.com/lyc-aon/ratatui-go/ompui/ansitext"
+	"github.com/lyc-aon/ratatui-go/ompui/component"
+	"github.com/lyc-aon/ratatui-go/ompui/interact"
+	"github.com/lyc-aon/ratatui-go/ompui/renderer"
 )
 
 func (a *App) requestRender(reason renderer.Reason) {

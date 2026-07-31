@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/michaelkelly/ratatui-go/ompui/component"
-	"github.com/michaelkelly/ratatui-go/ompui/renderer"
+	"github.com/lyc-aon/ratatui-go/ompui/component"
+	"github.com/lyc-aon/ratatui-go/ompui/renderer"
 )
 
 func newEng(buf *bytes.Buffer) *renderer.Engine {

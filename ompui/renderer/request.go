@@ -1,8 +1,8 @@
 package renderer
 
 import (
-	"github.com/michaelkelly/ratatui-go/ompui/component"
-	"github.com/michaelkelly/ratatui-go/ompui/ledger"
+	"github.com/lyc-aon/ratatui-go/ompui/component"
+	"github.com/lyc-aon/ratatui-go/ompui/ledger"
 )
 
 // Reason classifies why a frame is being drawn. It drives force/full/resize

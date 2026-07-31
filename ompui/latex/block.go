@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/michaelkelly/ratatui-go/ompui/ansitext"
+	"github.com/lyc-aon/ratatui-go/ompui/ansitext"
 )
 
 // Box is a rectangular rendered fragment. Every entry in Lines is padded to

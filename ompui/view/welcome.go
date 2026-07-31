@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/michaelkelly/ratatui-go/ompui/component"
-	"github.com/michaelkelly/ratatui-go/ompui/model"
+	"github.com/lyc-aon/ratatui-go/ompui/component"
+	"github.com/lyc-aon/ratatui-go/ompui/model"
 )
 
 // WelcomeInfo is everything the first-run block shows. The view reads no

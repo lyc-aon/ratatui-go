@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/michaelkelly/ratatui-go/ompui/event"
+	"github.com/lyc-aon/ratatui-go/ompui/event"
 )
 
 // legacySequences maps exact byte sequences to canonical key IDs.

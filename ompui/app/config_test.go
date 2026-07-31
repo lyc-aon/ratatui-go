@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/michaelkelly/ratatui-go/ompui/app"
+	"github.com/lyc-aon/ratatui-go/ompui/app"
 )
 
 func TestParseArgsHelpVersionTrace(t *testing.T) {

@@ -1,8 +1,8 @@
 package buffer
 
 import (
-	"github.com/michaelkelly/ratatui-go/layout"
-	"github.com/michaelkelly/ratatui-go/style"
+	"github.com/lyc-aon/ratatui-go/layout"
+	"github.com/lyc-aon/ratatui-go/style"
 )
 
 // PositionedCell is one cell update for a backend draw call.

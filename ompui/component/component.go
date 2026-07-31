@@ -1,6 +1,6 @@
 package component
 
-import "github.com/michaelkelly/ratatui-go/ompui/event"
+import "github.com/lyc-aon/ratatui-go/ompui/event"
 
 // Component is the render contract every UI node implements.
 //

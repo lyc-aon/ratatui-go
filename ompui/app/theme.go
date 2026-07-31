@@ -7,14 +7,14 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/michaelkelly/ratatui-go/ompui/component"
-	"github.com/michaelkelly/ratatui-go/ompui/latex"
-	"github.com/michaelkelly/ratatui-go/ompui/media"
-	"github.com/michaelkelly/ratatui-go/ompui/protocol"
-	"github.com/michaelkelly/ratatui-go/ompui/renderer"
-	ompruntime "github.com/michaelkelly/ratatui-go/ompui/runtime"
-	"github.com/michaelkelly/ratatui-go/ompui/termcaps"
-	"github.com/michaelkelly/ratatui-go/ompui/view"
+	"github.com/lyc-aon/ratatui-go/ompui/component"
+	"github.com/lyc-aon/ratatui-go/ompui/latex"
+	"github.com/lyc-aon/ratatui-go/ompui/media"
+	"github.com/lyc-aon/ratatui-go/ompui/protocol"
+	"github.com/lyc-aon/ratatui-go/ompui/renderer"
+	ompruntime "github.com/lyc-aon/ratatui-go/ompui/runtime"
+	"github.com/lyc-aon/ratatui-go/ompui/termcaps"
+	"github.com/lyc-aon/ratatui-go/ompui/view"
 )
 
 // themeBundle holds the active view theme. highlight/mermaid are owned by

@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/michaelkelly/ratatui-go/layout"
+	"github.com/lyc-aon/ratatui-go/layout"
 )
 
 func windowPixelSize(fd int) (layout.Size, error) {

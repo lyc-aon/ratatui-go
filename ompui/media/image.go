@@ -3,8 +3,8 @@ package media
 import (
 	"strconv"
 
-	"github.com/michaelkelly/ratatui-go/ompui/component"
-	"github.com/michaelkelly/ratatui-go/ompui/termcaps"
+	"github.com/lyc-aon/ratatui-go/ompui/component"
+	"github.com/lyc-aon/ratatui-go/ompui/termcaps"
 )
 
 // ReservedImageRow is a non-plain zero-width row used to reserve height for

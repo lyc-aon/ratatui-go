@@ -1,10 +1,10 @@
 package widgets
 
 import (
-	"github.com/michaelkelly/ratatui-go/buffer"
-	"github.com/michaelkelly/ratatui-go/layout"
-	"github.com/michaelkelly/ratatui-go/style"
-	"github.com/michaelkelly/ratatui-go/symbols"
+	"github.com/lyc-aon/ratatui-go/buffer"
+	"github.com/lyc-aon/ratatui-go/layout"
+	"github.com/lyc-aon/ratatui-go/style"
+	"github.com/lyc-aon/ratatui-go/symbols"
 )
 
 // RenderDirection controls sparkline column order.

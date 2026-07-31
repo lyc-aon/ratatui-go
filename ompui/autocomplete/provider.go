@@ -8,8 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/michaelkelly/ratatui-go/ompui/editor"
-	"github.com/michaelkelly/ratatui-go/ompui/model"
+	"github.com/lyc-aon/ratatui-go/ompui/editor"
+	"github.com/lyc-aon/ratatui-go/ompui/model"
 )
 
 // Provider is OMP's CombinedAutocompleteProvider for the Go editor.

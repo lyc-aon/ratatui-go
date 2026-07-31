@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/michaelkelly/ratatui-go/ompui/component"
-	"github.com/michaelkelly/ratatui-go/ompui/model"
+	"github.com/lyc-aon/ratatui-go/ompui/component"
+	"github.com/lyc-aon/ratatui-go/ompui/model"
 )
 
 // WorkingRows renders the activity indicator: one row saying what the session

@@ -1,6 +1,6 @@
 package widgets
 
-import "github.com/michaelkelly/ratatui-go/symbols"
+import "github.com/lyc-aon/ratatui-go/symbols"
 
 // Borders is a bitset of which block sides draw a border.
 type Borders uint8

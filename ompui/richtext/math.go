@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/michaelkelly/ratatui-go/ompui/latex"
+	"github.com/lyc-aon/ratatui-go/ompui/latex"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"

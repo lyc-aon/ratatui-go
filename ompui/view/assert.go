@@ -1,6 +1,6 @@
 package view
 
-import "github.com/michaelkelly/ratatui-go/ompui/component"
+import "github.com/lyc-aon/ratatui-go/ompui/component"
 
 // Compile-time interface satisfaction checks for the views this package
 // exports. The optional interfaces matter as much as Component: a Transcript

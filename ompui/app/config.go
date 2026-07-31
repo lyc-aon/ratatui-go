@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/michaelkelly/ratatui-go/ompui/client"
+	"github.com/lyc-aon/ratatui-go/ompui/client"
 )
 
 // Version is the omp-tui frontend version string.

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/michaelkelly/ratatui-go/ompui/input"
-	"github.com/michaelkelly/ratatui-go/ompui/textutil"
+	"github.com/lyc-aon/ratatui-go/ompui/input"
+	"github.com/lyc-aon/ratatui-go/ompui/textutil"
 	"golang.org/x/text/unicode/norm"
 )
 

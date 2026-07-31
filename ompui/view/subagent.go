@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/michaelkelly/ratatui-go/ompui/component"
-	"github.com/michaelkelly/ratatui-go/ompui/model"
+	"github.com/lyc-aon/ratatui-go/ompui/component"
+	"github.com/lyc-aon/ratatui-go/ompui/model"
 )
 
 // maxSubagentRows bounds the roster. A fan-out wider than this is a number, not

@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/michaelkelly/ratatui-go/buffer"
-	"github.com/michaelkelly/ratatui-go/layout"
-	"github.com/michaelkelly/ratatui-go/style"
-	"github.com/michaelkelly/ratatui-go/symbols"
-	"github.com/michaelkelly/ratatui-go/text"
+	"github.com/lyc-aon/ratatui-go/buffer"
+	"github.com/lyc-aon/ratatui-go/layout"
+	"github.com/lyc-aon/ratatui-go/style"
+	"github.com/lyc-aon/ratatui-go/symbols"
+	"github.com/lyc-aon/ratatui-go/text"
 )
 
 // Gauge is a horizontal progress bar with an optional centered label.

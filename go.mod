@@ -1,4 +1,4 @@
-module github.com/michaelkelly/ratatui-go
+module github.com/lyc-aon/ratatui-go
 
 go 1.25.0
 

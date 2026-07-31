@@ -1,12 +1,12 @@
 package ratatui
 
 import (
-	"github.com/michaelkelly/ratatui-go/backend"
-	"github.com/michaelkelly/ratatui-go/layout"
-	"github.com/michaelkelly/ratatui-go/style"
-	"github.com/michaelkelly/ratatui-go/terminal"
-	"github.com/michaelkelly/ratatui-go/text"
-	"github.com/michaelkelly/ratatui-go/widget"
+	"github.com/lyc-aon/ratatui-go/backend"
+	"github.com/lyc-aon/ratatui-go/layout"
+	"github.com/lyc-aon/ratatui-go/style"
+	"github.com/lyc-aon/ratatui-go/terminal"
+	"github.com/lyc-aon/ratatui-go/text"
+	"github.com/lyc-aon/ratatui-go/widget"
 )
 
 // Additional aliases that complete the application-facing surface.

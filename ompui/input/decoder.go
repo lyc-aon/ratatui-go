@@ -4,7 +4,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/michaelkelly/ratatui-go/ompui/event"
+	"github.com/lyc-aon/ratatui-go/ompui/event"
 )
 
 // Options configures Decoder timing and platform heuristics.

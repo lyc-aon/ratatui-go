@@ -4,7 +4,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/michaelkelly/ratatui-go/ompui/ansitext"
+	"github.com/lyc-aon/ratatui-go/ompui/ansitext"
 )
 
 // OverlayAnchor positions an overlay inside the available margin box.

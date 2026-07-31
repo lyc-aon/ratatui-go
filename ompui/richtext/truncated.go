@@ -3,7 +3,7 @@ package richtext
 import (
 	"strings"
 
-	"github.com/michaelkelly/ratatui-go/ompui/ansitext"
+	"github.com/lyc-aon/ratatui-go/ompui/ansitext"
 )
 
 // TruncatedText shows a single truncated line with optional padding.

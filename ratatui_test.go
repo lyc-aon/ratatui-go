@@ -3,7 +3,7 @@ package ratatui_test
 import (
 	"testing"
 
-	rat "github.com/michaelkelly/ratatui-go"
+	rat "github.com/lyc-aon/ratatui-go"
 )
 
 func TestApplicationFacadeDrawsAndSplits(t *testing.T) {

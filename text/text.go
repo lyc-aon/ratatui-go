@@ -3,8 +3,8 @@ package text
 import (
 	"strings"
 
-	"github.com/michaelkelly/ratatui-go/layout"
-	"github.com/michaelkelly/ratatui-go/style"
+	"github.com/lyc-aon/ratatui-go/layout"
+	"github.com/lyc-aon/ratatui-go/style"
 )
 
 // Text is one or more lines of styled text.

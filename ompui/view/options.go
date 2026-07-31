@@ -3,7 +3,7 @@ package view
 import (
 	"time"
 
-	"github.com/michaelkelly/ratatui-go/ompui/component"
+	"github.com/lyc-aon/ratatui-go/ompui/component"
 )
 
 // Responsive breakpoints in terminal cells.

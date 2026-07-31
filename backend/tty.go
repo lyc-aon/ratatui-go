@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/michaelkelly/ratatui-go/buffer"
-	"github.com/michaelkelly/ratatui-go/layout"
+	"github.com/lyc-aon/ratatui-go/buffer"
+	"github.com/lyc-aon/ratatui-go/layout"
 	"golang.org/x/term"
 )
 

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/michaelkelly/ratatui-go/ompui/autocomplete"
-	"github.com/michaelkelly/ratatui-go/ompui/editor"
-	"github.com/michaelkelly/ratatui-go/ompui/model"
+	"github.com/lyc-aon/ratatui-go/ompui/autocomplete"
+	"github.com/lyc-aon/ratatui-go/ompui/editor"
+	"github.com/lyc-aon/ratatui-go/ompui/model"
 )
 
 func boolVal(v bool) *bool { return &v }

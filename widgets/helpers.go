@@ -1,9 +1,9 @@
 package widgets
 
 import (
-	"github.com/michaelkelly/ratatui-go/buffer"
-	"github.com/michaelkelly/ratatui-go/layout"
-	"github.com/michaelkelly/ratatui-go/symbols"
+	"github.com/lyc-aon/ratatui-go/buffer"
+	"github.com/lyc-aon/ratatui-go/layout"
+	"github.com/lyc-aon/ratatui-go/symbols"
 )
 
 // InnerIfSome renders block into area when non-nil and returns its inner rect.

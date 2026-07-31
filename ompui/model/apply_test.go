@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/michaelkelly/ratatui-go/ompui/model"
-	"github.com/michaelkelly/ratatui-go/ompui/protocol"
+	"github.com/lyc-aon/ratatui-go/ompui/model"
+	"github.com/lyc-aon/ratatui-go/ompui/protocol"
 )
 
 func mustEnv(t *testing.T, typ string, payload any) protocol.Envelope {

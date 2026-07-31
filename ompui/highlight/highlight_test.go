@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/michaelkelly/ratatui-go/ompui/highlight"
+	"github.com/lyc-aon/ratatui-go/ompui/highlight"
 )
 
 func stripSGR(s string) string {

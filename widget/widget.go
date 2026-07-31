@@ -5,8 +5,8 @@
 package widget
 
 import (
-	"github.com/michaelkelly/ratatui-go/buffer"
-	"github.com/michaelkelly/ratatui-go/layout"
+	"github.com/lyc-aon/ratatui-go/buffer"
+	"github.com/lyc-aon/ratatui-go/layout"
 )
 
 // Widget is a type that can draw itself into a buffer within a rectangular area.

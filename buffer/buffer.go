@@ -1,9 +1,9 @@
 package buffer
 
 import (
-	"github.com/michaelkelly/ratatui-go/layout"
-	"github.com/michaelkelly/ratatui-go/style"
-	"github.com/michaelkelly/ratatui-go/text"
+	"github.com/lyc-aon/ratatui-go/layout"
+	"github.com/lyc-aon/ratatui-go/style"
+	"github.com/lyc-aon/ratatui-go/text"
 )
 
 // Buffer is a rectangular grid of cells representing desired terminal content.

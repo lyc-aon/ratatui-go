@@ -3,7 +3,7 @@ package editor
 import (
 	"strings"
 
-	"github.com/michaelkelly/ratatui-go/ompui/textutil"
+	"github.com/lyc-aon/ratatui-go/ompui/textutil"
 )
 
 func (e *Editor) wrapLine(line string, width int) []textChunk {

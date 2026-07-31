@@ -5,7 +5,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/michaelkelly/ratatui-go/ompui/event"
+	"github.com/lyc-aon/ratatui-go/ompui/event"
 )
 
 // HandleInput implements component.InputHandler.

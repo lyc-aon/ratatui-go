@@ -1,6 +1,6 @@
 package input
 
-import "github.com/michaelkelly/ratatui-go/ompui/event"
+import "github.com/lyc-aon/ratatui-go/ompui/event"
 
 // parseSGRMouse decodes an SGR mouse report `\x1b[<btn;col;rowM|m`.
 // Returns ok=false when data is not a complete SGR mouse sequence.

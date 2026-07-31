@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/michaelkelly/ratatui-go/ompui/protocol"
+	"github.com/lyc-aon/ratatui-go/ompui/protocol"
 )
 
 func TestV1EnvelopeRoundTripPreservesPayloadAndExtra(t *testing.T) {

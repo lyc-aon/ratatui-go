@@ -1,6 +1,6 @@
 package component
 
-import "github.com/michaelkelly/ratatui-go/ompui/event"
+import "github.com/lyc-aon/ratatui-go/ompui/event"
 
 // Remote is a leaf component whose rows are supplied by a protocol peer
 // (TypeScript / Bun). Go owns width notification and input routing; the peer

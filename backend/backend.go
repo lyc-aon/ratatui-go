@@ -5,8 +5,8 @@
 package backend
 
 import (
-	"github.com/michaelkelly/ratatui-go/buffer"
-	"github.com/michaelkelly/ratatui-go/layout"
+	"github.com/lyc-aon/ratatui-go/buffer"
+	"github.com/lyc-aon/ratatui-go/layout"
 )
 
 // ClearType selects which region of the visible display area is cleared.

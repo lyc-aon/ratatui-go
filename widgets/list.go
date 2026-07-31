@@ -1,8 +1,8 @@
 package widgets
 
 import (
-	"github.com/michaelkelly/ratatui-go/style"
-	"github.com/michaelkelly/ratatui-go/text"
+	"github.com/lyc-aon/ratatui-go/style"
+	"github.com/lyc-aon/ratatui-go/text"
 )
 
 // ListDirection is the order in which list items are painted.

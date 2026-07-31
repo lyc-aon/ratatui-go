@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/michaelkelly/ratatui-go/ompui/ansitext"
+	"github.com/lyc-aon/ratatui-go/ompui/ansitext"
 )
 
 // Bounds on rendered JSON. Mirrors OMP json-tree so a collapsed card stays a

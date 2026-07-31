@@ -6,8 +6,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/michaelkelly/ratatui-go/ompui/editor"
-	"github.com/michaelkelly/ratatui-go/ompui/event"
+	"github.com/lyc-aon/ratatui-go/ompui/editor"
+	"github.com/lyc-aon/ratatui-go/ompui/event"
 )
 
 func key(id string) event.Event {

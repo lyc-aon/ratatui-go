@@ -6,11 +6,11 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/michaelkelly/ratatui-go/ompui/ansitext"
-	"github.com/michaelkelly/ratatui-go/ompui/component"
-	"github.com/michaelkelly/ratatui-go/ompui/model"
-	"github.com/michaelkelly/ratatui-go/ompui/protocol"
-	"github.com/michaelkelly/ratatui-go/ompui/view"
+	"github.com/lyc-aon/ratatui-go/ompui/ansitext"
+	"github.com/lyc-aon/ratatui-go/ompui/component"
+	"github.com/lyc-aon/ratatui-go/ompui/model"
+	"github.com/lyc-aon/ratatui-go/ompui/protocol"
+	"github.com/lyc-aon/ratatui-go/ompui/view"
 )
 
 func strip(s string) string {

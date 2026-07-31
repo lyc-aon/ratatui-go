@@ -11,7 +11,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/michaelkelly/ratatui-go/ompui/app"
+	"github.com/lyc-aon/ratatui-go/ompui/app"
 )
 
 func main() {

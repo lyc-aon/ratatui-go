@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/michaelkelly/ratatui-go/ompui/ansitext"
+	"github.com/lyc-aon/ratatui-go/ompui/ansitext"
 )
 
 // CursorPos is a hardware-cursor target in frame coordinates (row absolute in

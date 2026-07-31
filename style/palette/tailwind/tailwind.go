@@ -1,6 +1,6 @@
 package tailwind
 
-import "github.com/michaelkelly/ratatui-go/style"
+import "github.com/lyc-aon/ratatui-go/style"
 
 // Palette contains variants C50..C950.
 type Palette struct {

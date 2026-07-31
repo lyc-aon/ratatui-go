@@ -5,7 +5,7 @@ import (
 	"testing"
 	"unicode"
 
-	"github.com/michaelkelly/ratatui-go/ompui/latex"
+	"github.com/lyc-aon/ratatui-go/ompui/latex"
 )
 
 func restoreColor(t *testing.T) {

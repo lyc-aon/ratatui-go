@@ -3,7 +3,7 @@ package buffer
 import (
 	"unicode"
 
-	"github.com/michaelkelly/ratatui-go/text"
+	"github.com/lyc-aon/ratatui-go/text"
 	"github.com/rivo/uniseg"
 )
 

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/michaelkelly/ratatui-go/ompui/termcaps"
+	"github.com/lyc-aon/ratatui-go/ompui/termcaps"
 )
 
 // MaxSniffBytes is the hard ceiling for base64→binary decode during dimension

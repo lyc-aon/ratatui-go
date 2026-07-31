@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/michaelkelly/ratatui-go/ompui/media"
+	"github.com/lyc-aon/ratatui-go/ompui/media"
 )
 
 // Tiny fixtures (all well under 10KiB).
