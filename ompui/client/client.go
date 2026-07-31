@@ -828,7 +828,7 @@ func (c *Client) readLoopLengthPrefix() {
 }
 
 func (c *Client) onReadError(err error) {
-	if errors.Is(err, io.EOF) {
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrClosedPipe) {
 		if !c.ready.Load() {
 			c.readyErr.Store(fmt.Errorf("%w: eof before ready", ErrChildExit))
 			c.markReady()
