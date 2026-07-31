@@ -50,7 +50,7 @@ type Client struct {
 
 	readyCh   chan struct{}
 	readyOnce sync.Once
-	readyErr  atomic.Value // error
+	readyErr  atomicError
 
 	pendingMu sync.Mutex
 	pending   map[string]*pendingCall
@@ -64,8 +64,8 @@ type Client struct {
 	dispatchDone chan struct{}
 	readerDone   chan struct{}
 	waitDone     chan struct{}
-	readerErr    atomic.Value // error
-	exitErr      atomic.Value // error
+	readerErr    atomicError
+	exitErr      atomicError
 	exitCode     atomic.Int32
 	shutdownOnce sync.Once
 	closeOnce    sync.Once
@@ -76,6 +76,30 @@ type pendingCall struct {
 	id     string
 	ch     chan Response // capacity 1
 	cancel context.CancelCauseFunc
+}
+
+type errorValue struct {
+	err error
+}
+
+// atomicError retains the first non-nil error. Wrapping the interface in a
+// stable pointer type avoids atomic.Value's concrete-type restriction when
+// different error implementations race during startup and process exit.
+type atomicError struct {
+	value atomic.Pointer[errorValue]
+}
+
+func (a *atomicError) Load() error {
+	if value := a.value.Load(); value != nil {
+		return value.err
+	}
+	return nil
+}
+
+func (a *atomicError) Store(err error) {
+	if err != nil {
+		a.value.CompareAndSwap(nil, &errorValue{err: err})
+	}
 }
 
 // Start spawns the core process (or uses ProcessFactory), wires pipes, starts
@@ -170,9 +194,7 @@ func Start(ctx context.Context, opts Options) (*Client, error) {
 // cleanupFailedStart reaps the child after a failed Start so callers never
 // observe zombies or a half-live Client.
 func (c *Client) cleanupFailedStart(cause error) error {
-	if cause != nil && c.readyErr.Load() == nil {
-		c.readyErr.Store(cause)
-	}
+	c.readyErr.Store(cause)
 	c.markReady()
 	c.fatal(cause)
 	if c.proc != nil {
@@ -202,18 +224,18 @@ func (c *Client) awaitReady(ctx context.Context, timeout time.Duration) error {
 	}
 	select {
 	case <-c.readyCh:
-		if v := c.readyErr.Load(); v != nil {
-			return v.(error)
+		if err := c.readyErr.Load(); err != nil {
+			return err
 		}
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-c.waitDone:
-		if v := c.readyErr.Load(); v != nil {
-			return v.(error)
+		if err := c.readyErr.Load(); err != nil {
+			return err
 		}
-		if v := c.exitErr.Load(); v != nil {
-			return v.(error)
+		if err := c.exitErr.Load(); err != nil {
+			return err
 		}
 		return fmt.Errorf("%w: exited before ready", ErrChildExit)
 	case <-timer:
@@ -222,8 +244,8 @@ func (c *Client) awaitReady(ctx context.Context, timeout time.Duration) error {
 }
 
 func (c *Client) startErr() error {
-	if v := c.readyErr.Load(); v != nil {
-		return v.(error)
+	if err := c.readyErr.Load(); err != nil {
+		return err
 	}
 	return ErrNotReady
 }
@@ -354,11 +376,11 @@ func (c *Client) Call(ctx context.Context, cmd protocol.RPCCommand) (Response, e
 		}
 		return Response{}, err
 	case <-c.waitDone:
-		if v := c.exitErr.Load(); v != nil {
-			return Response{}, v.(error)
+		if err := c.exitErr.Load(); err != nil {
+			return Response{}, err
 		}
-		if v := c.readerErr.Load(); v != nil {
-			return Response{}, v.(error)
+		if err := c.readerErr.Load(); err != nil {
+			return Response{}, err
 		}
 		return Response{}, ErrClosed
 	}
@@ -549,8 +571,8 @@ func (c *Client) Shutdown(ctx context.Context) error {
 
 		c.finishClose()
 	})
-	if v := c.exitErr.Load(); v != nil {
-		return v.(error)
+	if err := c.exitErr.Load(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -568,8 +590,8 @@ func (c *Client) Wait() error {
 	}
 	<-c.waitDone
 	c.finishClose()
-	if v := c.exitErr.Load(); v != nil {
-		return v.(error)
+	if err := c.exitErr.Load(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -580,14 +602,14 @@ func (c *Client) Err() error {
 	if c == nil {
 		return ErrClosed
 	}
-	if v := c.readerErr.Load(); v != nil {
-		return v.(error)
+	if err := c.readerErr.Load(); err != nil {
+		return err
 	}
-	if v := c.exitErr.Load(); v != nil {
-		return v.(error)
+	if err := c.exitErr.Load(); err != nil {
+		return err
 	}
-	if v := c.readyErr.Load(); v != nil {
-		return v.(error)
+	if err := c.readyErr.Load(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -643,10 +665,8 @@ func (c *Client) fatal(err error) {
 		return
 	}
 	c.fatalOnce.Do(func() {
-		if c.readerErr.Load() == nil {
-			c.readerErr.Store(err)
-		}
-		if c.readyErr.Load() == nil && !c.ready.Load() {
+		c.readerErr.Store(err)
+		if !c.ready.Load() {
 			c.readyErr.Store(err)
 			c.markReady()
 		}
@@ -685,10 +705,8 @@ func (c *Client) waitLoop() {
 	close(c.waitDone)
 
 	if err != nil || code != 0 {
-		var exit error
-		if v := c.exitErr.Load(); v != nil {
-			exit = v.(error)
-		} else {
+		exit := c.exitErr.Load()
+		if exit == nil {
 			exit = ErrChildExit
 		}
 		c.fatal(exit)
@@ -703,8 +721,8 @@ func (c *Client) waitLoop() {
 		}
 	}
 	if !c.ready.Load() {
-		if v := c.exitErr.Load(); v != nil {
-			c.readyErr.Store(v)
+		if err := c.exitErr.Load(); err != nil {
+			c.readyErr.Store(err)
 		} else {
 			c.readyErr.Store(fmt.Errorf("%w: exited before ready", ErrChildExit))
 		}
@@ -836,8 +854,8 @@ func (c *Client) onReadError(err error) {
 		// EOF after a live session is normal (stdin closed / process exit).
 		// Prefer the real exit error when the waiter already recorded one;
 		// otherwise cancel pending without stamping readerErr as a fault.
-		if v := c.exitErr.Load(); v != nil {
-			c.fatal(v.(error))
+		if err := c.exitErr.Load(); err != nil {
+			c.fatal(err)
 		} else {
 			c.cancelPending(ErrClosed)
 			if c.writer != nil {
