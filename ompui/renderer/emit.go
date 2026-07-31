@@ -21,7 +21,7 @@ func (b *byteBuf) WriteString(s string) {
 	b.b = append(b.b, s...)
 }
 
-func (b *byteBuf) WriteByte(c byte) {
+func (b *byteBuf) AppendByte(c byte) {
 	b.b = append(b.b, c)
 }
 
@@ -272,7 +272,7 @@ func (e *Engine) emitUpdate(
 				if up > 0 {
 					buf.WriteString(relMoveUp(up))
 				}
-				buf.WriteByte('\r')
+				buf.AppendByte('\r')
 				for r := firstChanged; r <= lastChanged; r++ {
 					if r > firstChanged {
 						buf.WriteString("\r\n")
@@ -358,7 +358,7 @@ func (e *Engine) emitUpdate(
 		} else if rowDelta < 0 {
 			buf.WriteString(relMoveUp(-rowDelta))
 		}
-		buf.WriteByte('\r')
+		buf.AppendByte('\r')
 		for r := firstChanged; r <= lastChanged; r++ {
 			if r > firstChanged {
 				buf.WriteString("\r\n")
@@ -401,7 +401,7 @@ func (e *Engine) emitUpdate(
 	if currentScreenRow > 0 {
 		buf.WriteString(relMoveUp(currentScreenRow))
 	}
-	buf.WriteByte('\r')
+	buf.AppendByte('\r')
 	wroteLine := false
 	for i := chunkFrom; i < chunkTo; i++ {
 		if wroteLine {
