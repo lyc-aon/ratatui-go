@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -846,7 +847,7 @@ func (c *Client) readLoopLengthPrefix() {
 }
 
 func (c *Client) onReadError(err error) {
-	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrClosedPipe) {
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrClosedPipe) || errors.Is(err, os.ErrClosed) {
 		if !c.ready.Load() {
 			c.readyErr.Store(fmt.Errorf("%w: eof before ready", ErrChildExit))
 			c.markReady()

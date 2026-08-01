@@ -3,6 +3,7 @@ package client
 import (
 	"errors"
 	"io"
+	"os"
 	"testing"
 )
 
@@ -12,6 +13,15 @@ func TestClosedPipeAfterReadyIsCleanEOF(t *testing.T) {
 	client.onReadError(io.ErrClosedPipe)
 	if err := client.Err(); err != nil {
 		t.Fatalf("closed pipe after ready recorded as fatal: %v", err)
+	}
+}
+
+func TestClosedFileAfterReadyIsCleanEOF(t *testing.T) {
+	client := &Client{pending: make(map[string]*pendingCall)}
+	client.ready.Store(true)
+	client.onReadError(&os.PathError{Op: "read", Path: "|0", Err: os.ErrClosed})
+	if err := client.Err(); err != nil {
+		t.Fatalf("closed file after ready recorded as fatal: %v", err)
 	}
 }
 
