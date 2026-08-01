@@ -1,6 +1,10 @@
 package component
 
-import "github.com/lyc-aon/ratatui-go/ompui/event"
+import (
+	"sync/atomic"
+
+	"github.com/lyc-aon/ratatui-go/ompui/event"
+)
 
 // Remote is a leaf component whose rows are supplied by a protocol peer
 // (TypeScript / Bun). Go owns width notification and input routing; the peer
@@ -38,8 +42,9 @@ type Remote struct {
 	disposed bool
 
 	// committed is the last SetNativeScrollbackCommittedRows claim
-	// (informational for the bridge via CommittedRows).
-	committed int
+	// (informational for the bridge via CommittedRows). Draw completion may
+	// update it from the scheduler goroutine.
+	committed atomic.Int64
 }
 
 // NewRemote constructs a remote leaf with the given protocol id.
@@ -73,7 +78,7 @@ func (r *Remote) CommittedRows() int {
 	if r == nil {
 		return 0
 	}
-	return r.committed
+	return int(r.committed.Load())
 }
 
 // Frame returns the current cached frame without rendering.
@@ -228,7 +233,7 @@ func (r *Remote) SetNativeScrollbackCommittedRows(rows int) {
 	if rows < 0 {
 		rows = 0
 	}
-	r.committed = rows
+	r.committed.Store(int64(rows))
 }
 
 // Dispose implements Disposable. Idempotent. Clears callbacks and cache.

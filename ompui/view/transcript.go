@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/lyc-aon/ratatui-go/ompui/component"
 	"github.com/lyc-aon/ratatui-go/ompui/model"
@@ -100,7 +101,7 @@ type Transcript struct {
 	width int
 	valid bool
 
-	committedRows int
+	committedRows atomic.Int64
 	stableFloor   int
 }
 
@@ -154,7 +155,7 @@ func (t *Transcript) SetNativeScrollbackCommittedRows(rows int) {
 	if rows < 0 {
 		rows = 0
 	}
-	t.committedRows = rows
+	t.committedRows.Store(int64(rows))
 }
 
 // Snapshot returns the state currently rendered.
@@ -327,6 +328,7 @@ func execAt(snap model.Snapshot, execByID map[string]int, id string) *model.Tool
 
 // Render implements component.Component.
 func (t *Transcript) Render(width int) component.Frame {
+	committedRows := int(t.committedRows.Load())
 	if width < 1 {
 		width = 1
 	}
@@ -348,7 +350,7 @@ func (t *Transcript) Render(width int) component.Frame {
 			sep = 1
 		}
 
-		if t.canReplayCommitted(block, width, rowCursor, sep) {
+		if t.canReplayCommitted(block, width, rowCursor, sep, committedRows) {
 			// Rows already in immutable scrollback: reuse verbatim, skipping
 			// both the content hash and the layout.
 			rowCursor += sep + len(block.lines)
@@ -427,14 +429,14 @@ func (t *Transcript) Render(width int) component.Frame {
 // history, so replaying the previous render is not just an optimization: it is
 // what "committed rows are never rewritten" means in practice, and it removes
 // hashing and layout for the bulk of a long session.
-func (t *Transcript) canReplayCommitted(block *transcriptBlock, width, rowCursor, sep int) bool {
-	if !t.valid || !block.built || block.width != width || t.committedRows <= 0 {
+func (t *Transcript) canReplayCommitted(block *transcriptBlock, width, rowCursor, sep, committedRows int) bool {
+	if !t.valid || !block.built || block.width != width || committedRows <= 0 {
 		return false
 	}
 	if block.startRow != rowCursor+sep || block.sep != sep {
 		return false
 	}
-	return rowCursor+sep+len(block.lines) <= t.committedRows
+	return rowCursor+sep+len(block.lines) <= committedRows
 }
 
 // syncBlocks aligns the retained block slice with the current spec list.

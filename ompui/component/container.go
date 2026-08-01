@@ -1,6 +1,10 @@
 package component
 
-import "github.com/lyc-aon/ratatui-go/ompui/event"
+import (
+	"sync/atomic"
+
+	"github.com/lyc-aon/ratatui-go/ompui/event"
+)
 
 // Container is a retained component that vertically stacks children.
 //
@@ -33,7 +37,8 @@ type Container struct {
 	reportedStable int
 
 	// committedRows is the engine claim from the previous frame (local rows).
-	committedRows int
+	// Draw completion may update it from the scheduler goroutine.
+	committedRows atomic.Int64
 
 	ignoreTight bool
 
@@ -232,7 +237,7 @@ func (c *Container) SetNativeScrollbackCommittedRows(rows int) {
 	if rows < 0 {
 		rows = 0
 	}
-	c.committedRows = rows
+	c.committedRows.Store(int64(rows))
 }
 
 // Invalidate drops the composition memo and invalidates every child.
@@ -363,6 +368,7 @@ func (c *Container) Render(width int) Frame {
 	}
 
 	totalRows := 0
+	committedRows := int(c.committedRows.Load())
 	offset := 0
 	allSame := prevValid
 
@@ -383,7 +389,7 @@ func (c *Container) Render(width int) Frame {
 			continue
 		}
 		// Propagate remaining committed rows before render (OMP order).
-		NotifyCommittedRows(ch, c.committedRows-offset)
+		NotifyCommittedRows(ch, committedRows-offset)
 
 		fr := ch.Render(width)
 		lines := fr.Lines

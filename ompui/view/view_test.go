@@ -3,6 +3,7 @@ package view_test
 import (
 	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 	"unsafe"
 
@@ -305,7 +306,7 @@ func TestImageAdapterIdentity(t *testing.T) {
 	}
 
 	r3 := view.NewRenderer(view.MonoTheme(), view.Options{
-		Tight: true,
+		Tight:        true,
 		ImageAdapter: func(req view.ImageRequest) component.Component { return nil },
 	})
 	fb2 := r3.ImageRows(view.ImageRequest{MIMEType: "image/jpeg"}, 40)
@@ -381,7 +382,7 @@ func TestTranscriptSeamOrderingStreamingTool(t *testing.T) {
 	snap.Messages = append(snap.Messages, model.Message{
 		Role: "assistant",
 		Content: []model.ContentBlock{{
-			Kind: model.ContentToolCall,
+			Kind:     model.ContentToolCall,
 			ToolCall: &model.ToolCall{ID: "c1", Name: "read", Intent: "open file"},
 		}},
 	})
@@ -461,4 +462,34 @@ func TestTranscriptPointerReuseUnchanged(t *testing.T) {
 	if unsafe.SliceData(a.Lines) != unsafe.SliceData(b.Lines) {
 		t.Fatal("transcript lines pointer not reused")
 	}
+}
+
+func TestTranscriptCommittedRowsConcurrentWithRender(t *testing.T) {
+	tr := view.NewTranscript(view.MonoTheme(), view.Options{Tight: true})
+	tr.SetSnapshot(model.Snapshot{
+		Generation: 1,
+		Messages:   []model.Message{textMsg("user", "stable"), textMsg("assistant", "also stable")},
+	})
+	if frame := tr.Render(70); frame.IsEmpty() {
+		t.Fatal("empty initial transcript")
+	}
+
+	start := make(chan struct{})
+	var writer sync.WaitGroup
+	writer.Add(1)
+	go func() {
+		defer writer.Done()
+		<-start
+		for i := 0; i < 10_000; i++ {
+			tr.SetNativeScrollbackCommittedRows(i)
+		}
+	}()
+
+	close(start)
+	for i := 0; i < 10_000; i++ {
+		if frame := tr.Render(70); frame.IsEmpty() {
+			t.Fatal("empty transcript during committed-row updates")
+		}
+	}
+	writer.Wait()
 }
