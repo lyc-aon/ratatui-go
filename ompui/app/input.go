@@ -147,8 +147,8 @@ func (a *App) handleEscape() bool {
 }
 
 func (a *App) resetDisplay() {
-	if a.engine != nil {
-		a.engine.ForceNextWindowRewrite()
+	if a.sched != nil {
+		a.sched.ForceNextWindowRewrite()
 	}
 	if a.transcript != nil {
 		a.transcript.Invalidate()

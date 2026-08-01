@@ -24,16 +24,16 @@ func (systemClock) AfterFunc(d time.Duration, f func()) func() {
 
 // ManualClock is a deterministic test clock.
 type ManualClock struct {
-	mu      sync.Mutex
-	now     time.Time
-	timers  []manualTimer
-	nextID  int
+	mu     sync.Mutex
+	now    time.Time
+	timers []manualTimer
+	nextID int
 }
 
 type manualTimer struct {
-	id      int
-	when    time.Time
-	fn      func()
+	id       int
+	when     time.Time
+	fn       func()
 	canceled bool
 }
 
@@ -121,7 +121,7 @@ func defaultMinInterval() time.Duration {
 //   - Coalesced ordinary requests collapse to the latest Request.
 //   - ReasonForce / ReasonReplace / ReasonReset / ReasonFlush / ReasonResize
 //     schedule immediately (still serialized).
-//   - Stop cancels pending timers; in-flight Draw finishes.
+//   - Stop cancels pending timers and waits for an in-flight Draw to finish.
 type Scheduler struct {
 	eng *Engine
 	cfg SchedulerConfig
@@ -143,7 +143,8 @@ type Scheduler struct {
 	// of Flush wait for completion via cond.
 	cond *sync.Cond
 
-	lastErr error
+	lastErr       error
+	committedRows int
 }
 
 // NewScheduler wraps eng. eng must be non-nil.
@@ -156,9 +157,10 @@ func NewScheduler(eng *Engine, cfg SchedulerConfig) *Scheduler {
 		clk = systemClock{}
 	}
 	s := &Scheduler{
-		eng: eng,
-		cfg: cfg,
-		clk: clk,
+		eng:           eng,
+		cfg:           cfg,
+		clk:           clk,
+		committedRows: eng.CommittedRows(),
 	}
 	s.cond = sync.NewCond(&s.mu)
 	return s
@@ -167,6 +169,43 @@ func NewScheduler(eng *Engine, cfg SchedulerConfig) *Scheduler {
 // Engine returns the underlying engine.
 func (s *Scheduler) Engine() *Engine { return s.eng }
 
+// CommittedRows returns the last completed draw's scrollback boundary.
+func (s *Scheduler) CommittedRows() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.committedRows
+}
+
+// ForceNextWindowRewrite serializes a viewport rewrite request with Draw.
+func (s *Scheduler) ForceNextWindowRewrite() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.waitForIdleLocked()
+	s.eng.ForceNextWindowRewrite()
+}
+
+// MarkResizeEvent serializes resize state with Draw.
+func (s *Scheduler) MarkResizeEvent() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.waitForIdleLocked()
+	s.eng.MarkResizeEvent()
+}
+
+// SetCaps serializes a terminal capability update with Draw.
+func (s *Scheduler) SetCaps(c Caps) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.waitForIdleLocked()
+	s.eng.SetCaps(c)
+}
+
+func (s *Scheduler) waitForIdleLocked() {
+	for s.drawing {
+		s.cond.Wait()
+	}
+}
+
 // LastError returns the error from the most recent Draw, if any.
 func (s *Scheduler) LastError() error {
 	s.mu.Lock()
@@ -174,7 +213,7 @@ func (s *Scheduler) LastError() error {
 	return s.lastErr
 }
 
-// Stop cancels pending work. Further Request calls are no-ops.
+// Stop cancels pending work, waits for the active Draw, and rejects new requests.
 func (s *Scheduler) Stop() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -185,6 +224,7 @@ func (s *Scheduler) Stop() {
 	}
 	s.pending = nil
 	s.scheduled = false
+	s.waitForIdleLocked()
 	s.cond.Broadcast()
 }
 
@@ -370,6 +410,7 @@ func (s *Scheduler) runDrawLocked() {
 
 	s.mu.Lock()
 	s.lastErr = err
+	s.committedRows = s.eng.CommittedRows()
 	s.lastDrawAt = s.clk.Now()
 	s.drawing = false
 	s.cond.Broadcast()

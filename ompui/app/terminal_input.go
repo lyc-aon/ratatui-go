@@ -344,13 +344,13 @@ func (a *App) routeLocalTermEvent(ev event.Event) {
 		if a.height < 1 {
 			a.height = 1
 		}
-		if a.engine != nil {
-			a.engine.MarkResizeEvent()
+		if a.sched != nil {
+			a.sched.MarkResizeEvent()
 		}
 		a.overlays.ReconcileFocus(a.width, a.height)
-		if a.term != nil && a.engine != nil {
+		if a.term != nil && a.sched != nil {
 			caps := renderer.CapsFromSnapshot(a.term.Capabilities(), termcaps.ProcessEnv())
-			a.engine.SetCaps(caps)
+			a.sched.SetCaps(caps)
 		}
 		if a.images != nil {
 			a.images.Clear()

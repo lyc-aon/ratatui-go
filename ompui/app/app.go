@@ -43,13 +43,12 @@ const (
 type App struct {
 	cfg Config
 
-	tty    *ttyFiles
-	term   *ompruntime.Terminal
-	cli    *client.Client
-	sub    *client.Subscription
-	state  *model.State
-	sched  *renderer.Scheduler
-	engine *renderer.Engine
+	tty   *ttyFiles
+	term  *ompruntime.Terminal
+	cli   *client.Client
+	sub   *client.Subscription
+	state *model.State
+	sched *renderer.Scheduler
 
 	root       *component.Container
 	transcript *view.Transcript
@@ -250,7 +249,6 @@ func (a *App) startTerminal(ctx context.Context) error {
 	if a.cfg.Trace {
 		eng.SetTrace(&renderer.WriterTrace{W: a.cfg.Stderr})
 	}
-	a.engine = eng
 	a.sched = renderer.NewScheduler(eng, renderer.DefaultScheduler())
 	a.budget = media.NewImageBudget(media.DefaultMaxInlineImages, func() {
 		a.post(command{kind: cmdForceRender})
@@ -939,7 +937,6 @@ func (a *App) shutdown() int {
 
 	if a.sched != nil {
 		a.sched.Stop()
-		_ = a.sched.Flush(nil)
 	}
 	// Dispose all remotes with protocol dispose/focus-out (no leak).
 	ids := make([]string, 0, len(a.remotes))

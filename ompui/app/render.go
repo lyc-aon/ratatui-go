@@ -58,8 +58,8 @@ func (a *App) paint() {
 	if a.budget != nil {
 		a.budget.BeginPass(false)
 	}
-	if a.engine != nil {
-		component.NotifyCommittedRows(a.transcript, a.engine.CommittedRows())
+	if a.sched != nil {
+		component.NotifyCommittedRows(a.transcript, a.sched.CommittedRows())
 	}
 
 	frame := a.root.Render(w)
