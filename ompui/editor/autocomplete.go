@@ -30,15 +30,20 @@ func (e *Editor) cancelAutocomplete(notify bool) {
 }
 
 // handleAutocompleteKey returns true when the key was consumed by the dropdown.
+//
+// Navigation resolves the tui.select.* actions. Escape and ctrl+p/ctrl+n stay
+// literal: escape belongs to the host interrupt contract, and ctrl+p/ctrl+n are
+// the dropdown's own emacs aliases — the host relies on them reaching the
+// dropdown instead of cycling models while it is open.
 func (e *Editor) handleAutocompleteKey(k event.Key) bool {
-	if event.MatchesKey(k, "escape") {
+	if event.MatchesKey(k, keyInterruptEscape) {
 		e.cancelAutocomplete(true)
 		if e.OnAutocompleteUpdate != nil {
 			e.OnAutocompleteUpdate()
 		}
 		return true
 	}
-	if event.MatchesAnyKey(k, "up", "ctrl+p") {
+	if e.matches(k, actSelectUp) || event.MatchesKey(k, keyDropdownPrev) {
 		if len(e.acItems) == 0 {
 			return true
 		}
@@ -52,7 +57,7 @@ func (e *Editor) handleAutocompleteKey(k event.Key) bool {
 		}
 		return true
 	}
-	if event.MatchesAnyKey(k, "down", "ctrl+n") {
+	if e.matches(k, actSelectDown) || event.MatchesKey(k, keyDropdownNext) {
 		if len(e.acItems) == 0 {
 			return true
 		}
@@ -62,7 +67,7 @@ func (e *Editor) handleAutocompleteKey(k event.Key) bool {
 		}
 		return true
 	}
-	if event.MatchesKey(k, "pageup") {
+	if e.matches(k, actSelectPageUp) {
 		e.acSelected -= e.acMaxVisible
 		if e.acSelected < 0 {
 			e.acSelected = 0
@@ -72,7 +77,7 @@ func (e *Editor) handleAutocompleteKey(k event.Key) bool {
 		}
 		return true
 	}
-	if event.MatchesKey(k, "pagedown") {
+	if e.matches(k, actSelectPageDown) {
 		e.acSelected += e.acMaxVisible
 		if e.acSelected >= len(e.acItems) {
 			e.acSelected = len(e.acItems) - 1
@@ -87,13 +92,13 @@ func (e *Editor) handleAutocompleteKey(k event.Key) bool {
 	}
 
 	// Tab — apply selection
-	if event.MatchesKey(k, "tab") {
+	if e.matches(k, actTab) {
 		e.acceptAutocomplete(false)
 		return true
 	}
 
-	// Enter on slash command: apply then fall through to submit
-	if event.MatchesKey(k, "enter") {
+	// Confirm on slash command: apply then fall through to submit
+	if e.matches(k, actSelectConfirm) {
 		prefix := e.acPrefix
 		if findLeadingSlashCommandStart(prefix) >= 0 {
 			cur := e.currentLine()

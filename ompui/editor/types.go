@@ -209,6 +209,12 @@ func WithAutocompleteProvider(p AutocompleteProvider) Option {
 	return func(e *Editor) { e.acProvider = p }
 }
 
+// WithKeyMatcher injects the host's resolved keybinding source (typically
+// *ompui/keymap.Registry). Without it the editor uses its built-in defaults.
+func WithKeyMatcher(m KeyMatcher) Option {
+	return func(e *Editor) { e.keys = m }
+}
+
 // WithBorderColor sets a styling wrapper for border glyphs.
 // Default is identity.
 func WithBorderColor(fn func(string) string) Option {

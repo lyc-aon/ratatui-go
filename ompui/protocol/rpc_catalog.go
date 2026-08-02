@@ -3,9 +3,11 @@ package protocol
 // RPC command type strings — exhaustive list from rpc-types.ts RpcCommand.
 // Kept as constants so Go callers avoid magic strings.
 const (
-	CmdPrompt                  = "prompt"
-	CmdSteer                   = "steer"
-	CmdFollowUp                = "follow_up"
+	CmdPrompt          = "prompt"
+	CmdSteer           = "steer"
+	CmdFollowUp        = "follow_up"
+	CmdDequeueMessages = "dequeue_messages"
+
 	CmdAbort                   = "abort"
 	CmdAbortAndPrompt          = "abort_and_prompt"
 	CmdNewSession              = "new_session"
@@ -51,6 +53,8 @@ func AllRPCCommands() []string {
 		CmdPrompt,
 		CmdSteer,
 		CmdFollowUp,
+		CmdDequeueMessages,
+
 		CmdAbort,
 		CmdAbortAndPrompt,
 		CmdNewSession,
@@ -93,8 +97,9 @@ func AllRPCCommands() []string {
 // IsKnownRPCCommand reports whether typ is in the RpcCommand catalog.
 func IsKnownRPCCommand(typ string) bool {
 	switch typ {
-	case CmdPrompt, CmdSteer, CmdFollowUp, CmdAbort, CmdAbortAndPrompt, CmdNewSession,
+	case CmdPrompt, CmdSteer, CmdFollowUp, CmdDequeueMessages, CmdAbort, CmdAbortAndPrompt, CmdNewSession,
 		CmdGetState, CmdGetAvailableCommands, CmdSetTodos, CmdSetHostTools, CmdSetHostURISchemes,
+
 		CmdSetSubagentSubscription, CmdGetSubagents, CmdGetSubagentMessages,
 		CmdSetModel, CmdCycleModel, CmdGetAvailableModels,
 		CmdSetThinkingLevel, CmdCycleThinkingLevel,
@@ -127,9 +132,11 @@ const (
 // RPCCommandFieldDoc documents the known fields per command for maintainers.
 // Values are human-readable field lists matching rpc-types.ts; not used at runtime.
 var RPCCommandFieldDoc = map[string]string{
-	CmdPrompt:                  "message:string, images?:ImageContent[], streamingBehavior?:'steer'|'followUp'",
-	CmdSteer:                   "message:string, images?:ImageContent[]",
-	CmdFollowUp:                "message:string, images?:ImageContent[]",
+	CmdPrompt:          "message:string, images?:ImageContent[], streamingBehavior?:'steer'|'followUp'",
+	CmdSteer:           "message:string, images?:ImageContent[]",
+	CmdFollowUp:        "message:string, images?:ImageContent[]",
+	CmdDequeueMessages: "(none)",
+
 	CmdAbort:                   "(none)",
 	CmdAbortAndPrompt:          "message:string, images?:ImageContent[]",
 	CmdNewSession:              "parentSession?:string",

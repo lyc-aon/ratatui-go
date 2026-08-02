@@ -46,11 +46,16 @@ type command struct {
 	err error
 }
 
+// rpcCompletion is invoked only by handleRPCDone on the serialized app loop.
+// Background RPC workers must only post the completed result.
+type rpcCompletion func(*App, rpcDone)
+
 type rpcDone struct {
-	op      string // "prompt" | "abort" | "steer" | "follow_up" | "call"
-	resp    client.Response
-	err     error
-	restore string // editor text to restore on failure
+	op       string // app operation name for errors and state refresh
+	resp     client.Response
+	err      error
+	restore  string // editor text to restore on failure
+	complete rpcCompletion
 }
 
 // extDialog holds one interactive extension UI or remote-component overlay.

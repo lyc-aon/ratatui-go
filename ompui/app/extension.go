@@ -151,6 +151,7 @@ func (a *App) openSelectDialog(req protocol.ExtensionUIRequest) {
 		return
 	}
 	list := interact.NewSelectItemList(items, 12, interact.SelectListTheme{Cursor: a.themes.theme.Accent("❯")}, interact.SelectListLayoutOptions{})
+	list.SetKeyMatcher(a.keys)
 	id := req.ID
 	list.OnSelect = func(item interact.SelectItem) {
 		_ = a.cli.ExtensionUIResponseValue(id, item.Value)
@@ -181,6 +182,7 @@ func (a *App) openConfirmDialog(req protocol.ExtensionUIRequest) {
 		{Value: "no", Label: "No"},
 	}
 	list := interact.NewSelectItemList(items, 4, interact.SelectListTheme{Cursor: a.themes.theme.Accent("❯")}, interact.SelectListLayoutOptions{})
+	list.SetKeyMatcher(a.keys)
 	list.OnSelect = func(item interact.SelectItem) {
 		_ = a.cli.ExtensionUIResponseConfirmed(id, item.Value == "yes")
 		a.closeExtDialog(id)
@@ -211,6 +213,7 @@ func (a *App) openConfirmDialog(req protocol.ExtensionUIRequest) {
 func (a *App) openInputDialog(req protocol.ExtensionUIRequest) {
 	id := req.ID
 	ed := editor.New(
+		editor.WithKeyMatcher(a.keys),
 		editor.WithPlaceholder(req.Placeholder),
 		editor.WithBorder(true),
 		editor.WithBorderColor(a.themes.theme.Border),
@@ -253,6 +256,7 @@ func (a *App) openEditorDialog(req protocol.ExtensionUIRequest) {
 	}
 	id := req.ID
 	ed := editor.New(
+		editor.WithKeyMatcher(a.keys),
 		editor.WithPlaceholder(req.Placeholder),
 		editor.WithBorderColor(a.themes.theme.Border),
 		editor.WithBorder(!promptStyle),

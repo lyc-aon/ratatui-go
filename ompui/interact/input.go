@@ -27,6 +27,7 @@ const (
 // undo, paste sanitization, and focus-aware cursor marker.
 type Input struct {
 	component.FocusState
+	keyBindings
 
 	value  string
 	cursor int // byte offset into value
@@ -90,7 +91,7 @@ func (in *Input) HandleInput(ev event.Event) {
 		in.handlePaste(ev.Paste)
 		return
 	case event.KindText:
-		if IsEnter(ev) {
+		if in.isSubmit(ev) {
 			if in.OnSubmit != nil {
 				in.OnSubmit(in.value)
 			}
@@ -109,55 +110,55 @@ func (in *Input) HandleInput(ev event.Event) {
 		return
 	}
 
-	if IsCancel(ev) {
+	if in.isCancel(ev) {
 		if in.OnEscape != nil {
 			in.OnEscape()
 		}
 		return
 	}
-	if matchKeys(ev, keysUndo) {
+	if in.match(ev, actUndo) {
 		in.undo()
 		return
 	}
-	if IsEnter(ev) {
+	if in.isSubmit(ev) {
 		if in.OnSubmit != nil {
 			in.OnSubmit(in.value)
 		}
 		return
 	}
-	if matchKeys(ev, keysDeleteCharBackward) {
+	if in.match(ev, actDeleteCharBackward) {
 		in.backspace()
 		return
 	}
-	if matchKeys(ev, keysDeleteCharForward) {
+	if in.match(ev, actDeleteCharForward) {
 		in.forwardDelete()
 		return
 	}
-	if matchKeys(ev, keysDeleteWordBackward) {
+	if in.match(ev, actDeleteWordBackward) {
 		in.deleteWordBackwards()
 		return
 	}
-	if matchKeys(ev, keysDeleteWordForward) {
+	if in.match(ev, actDeleteWordForward) {
 		in.deleteWordForward()
 		return
 	}
-	if matchKeys(ev, keysDeleteToLineStart) {
+	if in.match(ev, actDeleteToLineStart) {
 		in.deleteToLineStart()
 		return
 	}
-	if matchKeys(ev, keysDeleteToLineEnd) {
+	if in.match(ev, actDeleteToLineEnd) {
 		in.deleteToLineEnd()
 		return
 	}
-	if matchKeys(ev, keysYank) {
+	if in.match(ev, actYank) {
 		in.yank()
 		return
 	}
-	if matchKeys(ev, keysYankPop) {
+	if in.match(ev, actYankPop) {
 		in.yankPop()
 		return
 	}
-	if matchKeys(ev, keysCursorLeft) {
+	if in.match(ev, actCursorLeft) {
 		in.lastAction = inputActionNone
 		if in.cursor > 0 {
 			in.cursor -= prevGraphemeByteLen(in.value, in.cursor)
@@ -165,7 +166,7 @@ func (in *Input) HandleInput(ev event.Event) {
 		in.dirty = true
 		return
 	}
-	if matchKeys(ev, keysCursorRight) {
+	if in.match(ev, actCursorRight) {
 		in.lastAction = inputActionNone
 		if in.cursor < len(in.value) {
 			in.cursor += nextGraphemeByteLen(in.value, in.cursor)
@@ -173,23 +174,23 @@ func (in *Input) HandleInput(ev event.Event) {
 		in.dirty = true
 		return
 	}
-	if matchKeys(ev, keysCursorLineStart) {
+	if in.match(ev, actCursorLineStart) {
 		in.lastAction = inputActionNone
 		in.cursor = 0
 		in.dirty = true
 		return
 	}
-	if matchKeys(ev, keysCursorLineEnd) {
+	if in.match(ev, actCursorLineEnd) {
 		in.lastAction = inputActionNone
 		in.cursor = len(in.value)
 		in.dirty = true
 		return
 	}
-	if matchKeys(ev, keysCursorWordLeft) {
+	if in.match(ev, actCursorWordLeft) {
 		in.moveWordBackwards()
 		return
 	}
-	if matchKeys(ev, keysCursorWordRight) {
+	if in.match(ev, actCursorWordRight) {
 		in.moveWordForwards()
 		return
 	}

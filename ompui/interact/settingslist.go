@@ -81,6 +81,8 @@ type settingSection struct {
 // SettingsList is a searchable settings panel with optional split sidebar,
 // section focus, value cycling, and submenu hosting.
 type SettingsList struct {
+	keyBindings
+
 	items          []SettingItem
 	filtered       []SettingItem
 	theme          SettingsListTheme
@@ -305,7 +307,7 @@ func (sl *SettingsList) HandleInput(ev event.Event) {
 		component.RouteInput(sl.submenu, ev)
 		return
 	}
-	if IsCancel(ev) {
+	if sl.isCancel(ev) {
 		if sl.filterQuery != "" {
 			sl.ClearSearch()
 			return
@@ -326,8 +328,8 @@ func (sl *SettingsList) HandleInput(ev event.Event) {
 	if len(sl.filtered) == 0 {
 		return
 	}
-	up := matchKeys(ev, keysSelectUp) || (sl.options.VimKeys && matchKeys(ev, keysVimUp))
-	down := matchKeys(ev, keysSelectDown) || (sl.options.VimKeys && matchKeys(ev, keysVimDown))
+	up := sl.match(ev, actSelectUp) || (sl.options.VimKeys && matchKeys(ev, keysVimUp))
+	down := sl.match(ev, actSelectDown) || (sl.options.VimKeys && matchKeys(ev, keysVimDown))
 	switch {
 	case up:
 		if sl.sectionFocus {
@@ -341,11 +343,11 @@ func (sl *SettingsList) HandleInput(ev event.Event) {
 		} else {
 			sl.moveSelection(1, true)
 		}
-	case matchKeys(ev, keysSelectPageDown):
+	case sl.match(ev, actSelectPageDown):
 		sl.jumpSection(1)
-	case matchKeys(ev, keysSelectPageUp):
+	case sl.match(ev, actSelectPageUp):
 		sl.jumpSection(-1)
-	case IsEnter(ev) || IsSpace(ev):
+	case sl.isConfirm(ev) || IsSpace(ev):
 		if sl.sectionFocus {
 			sl.sectionFocus = false
 			sl.dirty = true
@@ -909,7 +911,7 @@ func (sl *SettingsList) handleSearchInput(ev event.Event) bool {
 	if !sl.options.typeToSearchEnabled() || len(sl.items) == 0 {
 		return false
 	}
-	if matchKeys(ev, keysDeleteCharBackward) {
+	if sl.match(ev, actDeleteCharBackward) {
 		if sl.filterQuery == "" {
 			return false
 		}

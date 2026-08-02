@@ -53,13 +53,16 @@ func (e *Editor) HandleInput(ev event.Event) {
 	}
 }
 
+// handleKey dispatches one key press.
+//
+// Every action declared by ompui/keymap resolves through e.matches, so an
+// injected KeyMatcher replaces the defaults instead of layering on top of them.
+// The literals that remain are keys the editor owns outright — see keys.go for
+// the list and why each one is not a configurable action.
 func (e *Editor) handleKey(k event.Key) {
-	// Character jump mode
+	// Character jump mode consumes the next key as the jump target.
 	if e.jumpMode != "" {
-		if event.MatchesAnyKey(k, "ctrl+t", "ctrl+g", "alt+t", "alt+g") {
-			// cancel if jump hotkey pressed again — exact bindings below also cancel
-		}
-		if event.MatchesKey(k, "escape") {
+		if event.MatchesKey(k, keyInterruptEscape) {
 			e.jumpMode = ""
 			return
 		}
@@ -69,34 +72,32 @@ func (e *Editor) handleKey(k event.Key) {
 			e.jumpToChar(k.Text, dir)
 			return
 		}
-		// Control key cancels and falls through
+		// Control key cancels and falls through.
 		e.jumpMode = ""
 	}
 
-	// Autocomplete navigation takes priority for a subset of keys.
+	// Autocomplete navigation takes priority for a subset of keys. This is what
+	// keeps the dropdown ahead of the host's global model cycling.
 	if e.acMode != acOff && e.handleAutocompleteKey(k) {
 		return
 	}
 
 	// Interrupt / EOF — host-owned when callbacks set.
-	if event.MatchesAnyKey(k, "ctrl+c", "escape") {
+	if event.MatchesAnyKey(k, keyInterruptCtrlC, keyInterruptEscape) {
 		if fn := e.OnInterrupt; fn != nil {
 			e.deferInputCallback(fn)
 		}
 		return
 	}
-	if event.MatchesKey(k, "ctrl+d") {
-		if e.isEmpty() {
-			if fn := e.OnEOF; fn != nil {
-				e.deferInputCallback(fn)
-				return
-			}
+	// EOF fires only on an empty buffer; otherwise ctrl+d falls through to the
+	// resolved deleteCharForward action below.
+	if event.MatchesKey(k, keyEOF) && e.isEmpty() {
+		if fn := e.OnEOF; fn != nil {
+			e.deferInputCallback(fn)
+			return
 		}
-		// otherwise forward-delete
-		e.handleForwardDelete()
-		return
 	}
-	if e.submitMode == SubmitOnCtrlEnter && event.MatchesKey(k, "ctrl+q") {
+	if e.submitMode == SubmitOnCtrlEnter && event.MatchesKey(k, keyCtrlQSubmit) {
 		if !e.DisableSubmit {
 			e.submitValue()
 		}
@@ -104,73 +105,83 @@ func (e *Editor) handleKey(k event.Key) {
 	}
 
 	// Undo / redo
-	if event.MatchesAnyKey(k, "ctrl+z", "ctrl+_") {
+	if e.matches(k, actUndo) {
 		e.applyUndo()
 		return
 	}
-	if event.MatchesKey(k, "ctrl+shift+z") {
+	if event.MatchesKey(k, keyRedo) {
 		e.applyRedo()
 		return
 	}
 
 	// Tab / Shift+Tab
-	if event.MatchesKey(k, "tab") {
+	if e.matches(k, actTab) {
 		if e.acMode == acOff {
 			e.handleTabCompletion()
 		}
 		return
 	}
-	if event.MatchesKey(k, "shift+tab") {
+	if event.MatchesKey(k, keyShiftTab) {
 		// OMP: no indent outdent — ignore unless autocomplete wants it
 		return
 	}
 
 	// Kill / yank
-	if event.MatchesKey(k, "ctrl+k") {
+	if e.matches(k, actDeleteToLineEnd) {
 		e.deleteToEndOfLine()
 		return
 	}
-	if event.MatchesKey(k, "ctrl+u") {
+	if e.matches(k, actDeleteToLineStart) {
 		e.deleteToStartOfLine()
 		return
 	}
-	if event.MatchesAnyKey(k, "ctrl+w", "alt+backspace", "super+alt+backspace") {
+	if e.matches(k, actDeleteWordBackward) {
 		e.deleteWordBackwards()
 		return
 	}
-	if event.MatchesAnyKey(k, "alt+d", "alt+delete", "super+alt+d", "super+alt+delete") {
+	if e.matches(k, actDeleteWordForward) {
 		e.deleteWordForwards()
 		return
 	}
-	if event.MatchesKey(k, "ctrl+y") {
+	if e.matches(k, actYank) {
 		e.yankFromKillRing()
 		return
 	}
-	if event.MatchesKey(k, "alt+y") {
+	if e.matches(k, actYankPop) {
 		e.yankPop()
 		return
 	}
 
 	// Line nav
-	if event.MatchesAnyKey(k, "ctrl+a", "home") {
+	if e.matches(k, actCursorLineStart) {
 		e.moveToLineStart()
 		return
 	}
-	if event.MatchesAnyKey(k, "ctrl+e", "end") {
+	if e.matches(k, actCursorLineEnd) {
 		e.moveToLineEnd()
 		return
 	}
-	if event.MatchesAnyKey(k, "ctrl+home", "alt+<") {
+	if event.MatchesAnyKey(k, keysMessageStart...) {
 		e.moveToMessageStart()
 		return
 	}
-	if event.MatchesAnyKey(k, "ctrl+end", "alt+>") {
+	if event.MatchesAnyKey(k, keysMessageEnd...) {
 		e.moveToMessageEnd()
 		return
 	}
 
+	// Character jump — arms jump mode; the next printable key is the target.
+	if e.matches(k, actJumpForward) {
+		e.jumpMode = "forward"
+		return
+	}
+	if e.matches(k, actJumpBackward) {
+		e.jumpMode = "backward"
+		return
+	}
+
 	// Alt+Enter
-	if event.MatchesKey(k, "alt+enter") {
+	if event.MatchesKey(k, keyAltEnter) {
 		if fn := e.OnAltEnter; fn != nil {
 			text := strings.Join(e.lines, "\n")
 			e.deferInputCallback(func() { fn(text) })
@@ -180,14 +191,14 @@ func (e *Editor) handleKey(k event.Key) {
 		return
 	}
 
-	// Newline variants: shift+enter, ctrl+enter
-	if e.submitMode == SubmitOnCtrlEnter && event.MatchesKey(k, "ctrl+enter") {
+	// Newline / submit
+	if e.submitMode == SubmitOnCtrlEnter && event.MatchesKey(k, keyCtrlEnterSubmit) {
 		if !e.DisableSubmit {
 			e.submitValue()
 		}
 		return
 	}
-	if event.MatchesAnyKey(k, "shift+enter", "ctrl+enter") {
+	if e.matches(k, actNewLine) {
 		if e.shouldSubmitOnBackslashEnter(k) {
 			e.handleBackspace()
 			e.submitValue()
@@ -196,9 +207,7 @@ func (e *Editor) handleKey(k event.Key) {
 		e.addNewLine()
 		return
 	}
-
-	// Plain Enter — submit
-	if event.MatchesKey(k, "enter") {
+	if e.matches(k, actSubmit) {
 		if e.submitMode == SubmitOnCtrlEnter {
 			e.addNewLine()
 			return
@@ -215,17 +224,17 @@ func (e *Editor) handleKey(k event.Key) {
 	}
 
 	// Backspace / delete
-	if event.MatchesAnyKey(k, "backspace", "shift+backspace") {
+	if e.matches(k, actDeleteCharBackward) || event.MatchesKey(k, keyShiftBackspace) {
 		e.handleBackspace()
 		return
 	}
-	if event.MatchesAnyKey(k, "delete", "shift+delete") {
+	if e.matches(k, actDeleteCharForward) || event.MatchesKey(k, keyShiftDelete) {
 		e.handleForwardDelete()
 		return
 	}
 
 	// Page up/down
-	if event.MatchesKey(k, "pageup") {
+	if e.matches(k, actPageUp) {
 		if e.isEmpty() {
 			e.navigateHistory(-1)
 		} else if e.historyIndex > -1 && e.isOnFirstVisualLine() {
@@ -235,7 +244,7 @@ func (e *Editor) handleKey(k event.Key) {
 		}
 		return
 	}
-	if event.MatchesKey(k, "pagedown") {
+	if e.matches(k, actPageDown) {
 		if e.historyIndex > -1 && e.isOnLastVisualLine() {
 			e.navigateHistory(1)
 		} else {
@@ -244,20 +253,20 @@ func (e *Editor) handleKey(k event.Key) {
 		return
 	}
 
-	// Word nav
-	if event.MatchesAnyKey(k, "alt+left", "ctrl+left", "alt+b") {
+	// Word nav — checked before the plain arrows so modified arrows win.
+	if e.matches(k, actCursorWordLeft) {
 		e.resetKillSequence()
 		e.moveWordBackwards()
 		return
 	}
-	if event.MatchesAnyKey(k, "alt+right", "ctrl+right", "alt+f") {
+	if e.matches(k, actCursorWordRight) {
 		e.resetKillSequence()
 		e.moveWordForwards()
 		return
 	}
 
 	// Arrows
-	if event.MatchesKey(k, "up") {
+	if e.matches(k, actCursorUp) {
 		if e.isEmpty() {
 			e.navigateHistory(-1)
 		} else if e.historyIndex > -1 && e.isOnFirstVisualLine() {
@@ -269,7 +278,7 @@ func (e *Editor) handleKey(k event.Key) {
 		}
 		return
 	}
-	if event.MatchesKey(k, "down") {
+	if e.matches(k, actCursorDown) {
 		if e.historyIndex > -1 && e.isOnLastVisualLine() {
 			e.navigateHistory(1)
 		} else if e.isOnLastVisualLine() {
@@ -279,38 +288,21 @@ func (e *Editor) handleKey(k event.Key) {
 		}
 		return
 	}
-	if event.MatchesKey(k, "right") {
+	if e.matches(k, actCursorRight) {
 		e.moveCursor(0, 1)
 		return
 	}
-	if event.MatchesKey(k, "left") {
+	if e.matches(k, actCursorLeft) {
 		e.moveCursor(0, -1)
 		return
 	}
 
-	// Select-all
-	if event.MatchesKey(k, "ctrl+a") {
-		// already handled as line-start above (emacs). Host wanting select-all
-		// can call SelectAll(). OMP editor uses ctrl+a as line start.
-		return
-	}
-
-	// Shift+Space
-	if event.MatchesKey(k, "shift+space") {
+	// Shift+Space inserts a literal space.
+	if event.MatchesKey(k, keyShiftSpace) {
 		e.insertCharacter(" ")
 		return
 	}
 
-	// Escape cancels autocomplete (already handled) or clears selection
-	if event.MatchesKey(k, "escape") {
-		if e.sel.Active {
-			e.clearSelection()
-		}
-		return
-	}
-
-	// Jump mode triggers (OMP defaults: often unbound; expose via ctrl+t / ctrl+g style)
-	// No default OMP hardcodes beyond keybindings; skip unless ID matches known ones.
 	// Printable text from key
 	if k.Text != "" {
 		// Filter pure control
@@ -341,7 +333,7 @@ func (e *Editor) shouldSubmitOnBackslashEnter(k event.Key) bool {
 		return false
 	}
 	// Only when the physical key is plain enter (some terminals send enter for shift+enter maps)
-	if !event.MatchesKey(k, "enter") {
+	if !event.MatchesKey(k, keyPhysicalEnter) {
 		return false
 	}
 	cur := e.currentLine()

@@ -64,6 +64,8 @@ type SelectListLayoutOptions struct {
 
 // SelectList is a generic filterable picker.
 type SelectList[T any] struct {
+	keyBindings
+
 	items       []T
 	toItem      func(T) SelectItem
 	filtered    []T
@@ -209,7 +211,7 @@ func (sl *SelectList[T]) ClickItem(index int) {
 
 // HandleInput implements component.InputHandler.
 func (sl *SelectList[T]) HandleInput(ev event.Event) {
-	if IsCancel(ev) {
+	if sl.isCancel(ev) {
 		if sl.OnCancel != nil {
 			sl.OnCancel()
 		}
@@ -221,29 +223,29 @@ func (sl *SelectList[T]) HandleInput(ev event.Event) {
 	if len(sl.filtered) == 0 {
 		return
 	}
-	if matchKeys(ev, keysSelectUp) || (sl.layout.VimKeys && matchKeys(ev, keysVimUp)) {
+	if sl.match(ev, actSelectUp) || (sl.layout.VimKeys && matchKeys(ev, keysVimUp)) {
 		sl.moveSel(-1, true)
 		return
 	}
-	if matchKeys(ev, keysSelectDown) || (sl.layout.VimKeys && matchKeys(ev, keysVimDown)) {
+	if sl.match(ev, actSelectDown) || (sl.layout.VimKeys && matchKeys(ev, keysVimDown)) {
 		sl.moveSel(1, true)
 		return
 	}
-	if matchKeys(ev, keysSelectPageUp) {
+	if sl.match(ev, actSelectPageUp) {
 		sl.selected = maxInt(0, sl.selected-sl.maxVisible)
 		sl.skipDisabled(-1)
 		sl.dirty = true
 		sl.notifySelectionChange()
 		return
 	}
-	if matchKeys(ev, keysSelectPageDown) {
+	if sl.match(ev, actSelectPageDown) {
 		sl.selected = minInt(len(sl.filtered)-1, sl.selected+sl.maxVisible)
 		sl.skipDisabled(1)
 		sl.dirty = true
 		sl.notifySelectionChange()
 		return
 	}
-	if IsEnter(ev) {
+	if sl.isConfirm(ev) {
 		item, ok := sl.SelectedItem()
 		if !ok {
 			return
@@ -613,7 +615,7 @@ func (sl *SelectList[T]) handleSearchInput(ev event.Event) bool {
 	if !sl.canEditSearch() {
 		return false
 	}
-	if matchKeys(ev, keysDeleteCharBackward) {
+	if sl.match(ev, actDeleteCharBackward) {
 		if sl.filterQuery == "" {
 			return false
 		}

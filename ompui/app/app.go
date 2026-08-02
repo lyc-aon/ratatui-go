@@ -20,6 +20,7 @@ import (
 	"github.com/lyc-aon/ratatui-go/ompui/component"
 	"github.com/lyc-aon/ratatui-go/ompui/editor"
 	"github.com/lyc-aon/ratatui-go/ompui/interact"
+	"github.com/lyc-aon/ratatui-go/ompui/keymap"
 	"github.com/lyc-aon/ratatui-go/ompui/media"
 	"github.com/lyc-aon/ratatui-go/ompui/model"
 	"github.com/lyc-aon/ratatui-go/ompui/protocol"
@@ -41,7 +42,9 @@ const (
 // Run owns the serialized event loop. Background work posts commands onto the
 // internal queue and never mutates render state concurrently.
 type App struct {
-	cfg Config
+	cfg  Config
+	keys *keymap.Registry
+	clip *ClipboardHelper
 
 	tty   *ttyFiles
 	term  *ompruntime.Terminal
@@ -93,10 +96,13 @@ type App struct {
 
 	shuttingDown atomic.Bool
 	lastSigint   time.Time
-	exitCode     int
-	runErr       error
-	quitReason   string
-	initialSent  bool
+	lastLeftTap  time.Time
+	leftTapCount int
+
+	exitCode    int
+	runErr      error
+	quitReason  string
+	initialSent bool
 
 	needRender   bool
 	forceRender  bool
@@ -108,8 +114,9 @@ type App struct {
 	title        string
 	animFrame    int
 
-	followUpPrefer bool
-	editorDirty    bool // need editor_state push
+	followUpPrefer      bool
+	editorDirty         bool  // need editor_state push
+	pendingPromptImages []any // loop-owned protocol image objects for the next prompt
 
 	// terminal_input bridge (extension onTerminalInput).
 	// Loop-owned only — no mutex; one in-flight + FIFO queue.
@@ -123,16 +130,28 @@ type App struct {
 }
 
 type rpcJob struct {
-	op      string
-	fn      func(context.Context) (client.Response, error)
-	restore string
+	op       string
+	fn       func(context.Context) (client.Response, error)
+	restore  string
+	complete rpcCompletion
 }
 
 // New constructs an App. Call Run to start.
 func New(cfg Config) *App {
 	cfg = cfg.withDefaults()
+	keys := keymap.NewRegistry()
+	if len(cfg.UserKeyBindings) > 0 {
+		keys.SetUserBindings(cfg.UserKeyBindings)
+	} else if cfg.ConfigDir != "" {
+		if userMap, err := keymap.LoadConfig(cfg.ConfigDir); err == nil && len(userMap) > 0 {
+			keys.SetUserBindings(userMap)
+		}
+	}
+
 	a := &App{
 		cfg:                  cfg,
+		keys:                 keys,
+		clip:                 newClipboardHelper(),
 		state:                model.NewState(),
 		cmds:                 make(chan command, 256),
 		rpcJobs:              make(chan rpcJob, 64),
@@ -150,6 +169,11 @@ func New(cfg Config) *App {
 		a.trace = cfg.Stderr
 	}
 	return a
+}
+
+// KeyRegistry returns the app's keybinding action registry.
+func (a *App) KeyRegistry() *keymap.Registry {
+	return a.keys
 }
 
 // Run starts the TTY, core client, bootstraps state, and runs the event loop.
@@ -313,6 +337,9 @@ func (a *App) startClient(ctx context.Context) error {
 }
 
 func (a *App) buildUI() {
+	if a.themes.theme.Accent == nil {
+		a.themes = buildTheme(nil, view.AppearanceDark)
+	}
 	// Stable Options: ImageAdapter set once — never rebuild each frame.
 	a.viewOpts = view.Options{
 		ExpandHint:   "ctrl+o",
@@ -343,6 +370,7 @@ func (a *App) buildUI() {
 	})
 
 	a.ed = editor.New(
+		editor.WithKeyMatcher(a.keys),
 		editor.WithPlaceholder("Type a message…"),
 		editor.WithPromptPrefix("> "),
 		editor.WithBorder(true),
@@ -532,7 +560,7 @@ func (a *App) startRPCWorker() {
 				resp, err := job.fn(ctx)
 				cancel()
 				a.post(command{kind: cmdRPCDone, rpcDone: rpcDone{
-					op: job.op, resp: resp, err: err, restore: job.restore,
+					op: job.op, resp: resp, err: err, restore: job.restore, complete: job.complete,
 				}})
 			}
 		}
@@ -540,18 +568,40 @@ func (a *App) startRPCWorker() {
 }
 
 func (a *App) enqueueRPC(op string, fn func(context.Context) (client.Response, error), restore string) {
-	if a.cli == nil {
-		return
+	_ = a.enqueueRPCWithCompletion(op, fn, restore, nil)
+}
+
+func (a *App) enqueueRPCWithCompletion(
+	op string,
+	fn func(context.Context) (client.Response, error),
+	restore string,
+	complete rpcCompletion,
+) bool {
+	if a.cli == nil || a.ctx == nil {
+		return false
 	}
 	select {
-	case a.rpcJobs <- rpcJob{op: op, fn: fn, restore: restore}:
+	case a.rpcJobs <- rpcJob{op: op, fn: fn, restore: restore, complete: complete}:
+		return true
 	case <-a.ctx.Done():
+		return false
 	}
 }
 
 // bgCall routes to the serial RPC worker (no concurrent Calls from app).
 func (a *App) bgCall(op string, fn func(context.Context) (client.Response, error), restore string) {
-	a.enqueueRPC(op, fn, restore)
+	_ = a.enqueueRPCWithCompletion(op, fn, restore, nil)
+}
+
+// bgCallWithCompletion runs complete on the serialized app loop after the RPC
+// has finished. The worker goroutine only transports rpcDone back to that loop.
+func (a *App) bgCallWithCompletion(
+	op string,
+	fn func(context.Context) (client.Response, error),
+	restore string,
+	complete rpcCompletion,
+) bool {
+	return a.enqueueRPCWithCompletion(op, fn, restore, complete)
 }
 
 func (a *App) wireSignals(ctx context.Context) {

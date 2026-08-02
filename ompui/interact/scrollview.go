@@ -302,11 +302,11 @@ func (sv *ScrollView) HandleScrollKey(ev event.Event) bool {
 		sv.Scroll(1)
 		return true
 	}
-	if matchKeys(ev, keysSelectPageUp) {
+	if matchKeys(ev, keysScrollPageUp) {
 		sv.Page(-1)
 		return true
 	}
-	if matchKeys(ev, keysSelectPageDown) {
+	if matchKeys(ev, keysScrollPageDown) {
 		sv.Page(1)
 		return true
 	}

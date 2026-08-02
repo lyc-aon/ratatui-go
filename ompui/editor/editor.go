@@ -87,6 +87,9 @@ type Editor struct {
 
 	mu sync.Mutex
 
+	// keys resolves configurable action ids; nil uses the built-in defaults.
+	keys KeyMatcher
+
 	lines      []string
 	cursorLine int
 	cursorCol  int // UTF-8 byte offset into lines[cursorLine]
@@ -256,6 +259,13 @@ func (e *Editor) Cursor() CursorPos {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return CursorPos{Line: e.cursorLine, Col: e.cursorCol}
+}
+
+// CurrentLine returns the logical line containing the caret.
+func (e *Editor) CurrentLine() string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.currentLine()
 }
 
 // SetCursor moves the caret. Col is a UTF-8 byte offset; it is clamped and
@@ -615,6 +625,18 @@ func (e *Editor) KillRingLen() int {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.killRing.Len()
+}
+
+// --- keybindings ---
+
+// SetKeyMatcher injects the host's resolved keybinding source, replacing the
+// built-in defaults for every action the editor resolves. Passing nil restores
+// the defaults. The matcher is stored per instance; no package state is
+// mutated. Safe to call while the editor is live.
+func (e *Editor) SetKeyMatcher(m KeyMatcher) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.keys = m
 }
 
 // --- autocomplete ---

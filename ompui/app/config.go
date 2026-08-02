@@ -57,6 +57,12 @@ type Config struct {
 	// Bootstrap carries the initial interactive prompt stripped from core argv.
 	// Sent once via client.Prompt after ready + get_state/messages/commands.
 	Bootstrap Bootstrap
+
+	// ConfigDir is the directory containing user keybindings or configuration.
+	ConfigDir string
+
+	// UserKeyBindings overrides default keybindings when provided.
+	UserKeyBindings map[string][]string
 }
 
 // Bootstrap is the launcher-provided initial interactive payload.
