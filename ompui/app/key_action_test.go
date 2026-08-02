@@ -52,6 +52,18 @@ func TestActionKeyRegistryDefaultsAndMatching(t *testing.T) {
 	}
 }
 
+func TestCycleModelShortcutCommandsPreserveDirection(t *testing.T) {
+	t.Parallel()
+	forward := cycleModelRPCCommand("")
+	if forward.Type != protocol.CmdCycleModel || len(forward.Fields) != 0 {
+		t.Fatalf("forward command=%+v", forward)
+	}
+	backward := cycleModelRPCCommand("backward")
+	if backward.Type != protocol.CmdCycleModel || backward.Fields["direction"] != "backward" {
+		t.Fatalf("backward command=%+v", backward)
+	}
+}
+
 func TestCustomUserKeyBindingsOverride(t *testing.T) {
 	t.Parallel()
 	cfg := Config{

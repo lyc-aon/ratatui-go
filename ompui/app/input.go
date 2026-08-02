@@ -306,76 +306,21 @@ func (a *App) cycleModel() {
 
 func (a *App) cycleModelForward() {
 	a.bgCall("cycle_model", func(ctx context.Context) (client.Response, error) {
-		return a.cli.Call(ctx, protocol.BuildRPCCommand(protocol.CmdCycleModel, "", nil))
+		return a.cli.Call(ctx, cycleModelRPCCommand(""))
 	}, "")
 }
 
 func (a *App) cycleModelBackward() {
-	if a.cli == nil {
-		a.setLocalError("cycle model backward: core connection unavailable")
-		a.requestRender(renderer.ReasonUpdate)
-		return
-	}
-	if !a.bgCallWithCompletion("get_available_models", func(ctx context.Context) (client.Response, error) {
-		return a.cli.Call(ctx, protocol.BuildRPCCommand(protocol.CmdGetAvailableModels, "", nil))
-	}, "", func(a *App, d rpcDone) {
-		if d.err != nil || !d.resp.Success {
-			return
-		}
-		models, err := decodeAvailableModelItems(d.resp)
-		if err != nil {
-			a.setLocalError("cycle model backward: " + err.Error())
-			return
-		}
-		current, err := currentAvailableModel(a.state.Snapshot().Session.Model)
-		if err != nil {
-			a.setLocalError("cycle model backward: " + err.Error())
-			return
-		}
-		previous, err := previousAvailableModel(models, current)
-		if err != nil {
-			a.setLocalError("cycle model backward: " + err.Error())
-			return
-		}
-		a.bgCall("set_model", func(ctx context.Context) (client.Response, error) {
-			return a.cli.Call(ctx, protocol.BuildRPCCommand(protocol.CmdSetModel, "", map[string]any{
-				"provider": previous.Provider,
-				"modelId":  previous.ID,
-			}))
-		}, "")
-	}) {
-		a.setLocalError("cycle model backward: RPC worker unavailable")
-		a.requestRender(renderer.ReasonUpdate)
-	}
+	a.bgCall("cycle_model", func(ctx context.Context) (client.Response, error) {
+		return a.cli.Call(ctx, cycleModelRPCCommand("backward"))
+	}, "")
 }
 
-func currentAvailableModel(raw json.RawMessage) (availableModelItem, error) {
-	if len(raw) == 0 || strings.TrimSpace(string(raw)) == "null" {
-		return availableModelItem{}, fmt.Errorf("current model is unavailable")
+func cycleModelRPCCommand(direction string) protocol.RPCCommand {
+	if direction == "" {
+		return protocol.BuildRPCCommand(protocol.CmdCycleModel, "", nil)
 	}
-	var model availableModelItem
-	if err := json.Unmarshal(raw, &model); err != nil {
-		return availableModelItem{}, fmt.Errorf("decode current model: %w", err)
-	}
-	if strings.TrimSpace(model.Provider) == "" || strings.TrimSpace(model.ID) == "" {
-		return availableModelItem{}, fmt.Errorf("current model is missing provider or id")
-	}
-	return model, nil
-}
-
-func previousAvailableModel(models []availableModelItem, current availableModelItem) (availableModelItem, error) {
-	if len(models) < 2 {
-		return availableModelItem{}, fmt.Errorf("only one model is available")
-	}
-	for i, model := range models {
-		if model.Provider == current.Provider && model.ID == current.ID {
-			if i == 0 {
-				return models[len(models)-1], nil
-			}
-			return models[i-1], nil
-		}
-	}
-	return availableModelItem{}, fmt.Errorf("current model is not available")
+	return protocol.BuildRPCCommand(protocol.CmdCycleModel, "", map[string]any{"direction": direction})
 }
 
 func (a *App) toggleThinking() {
