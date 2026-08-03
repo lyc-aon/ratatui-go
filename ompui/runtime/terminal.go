@@ -31,7 +31,7 @@ type Terminal struct {
 	// Lifecycle
 	plat         platformState
 	altScreen    bool
-	mouseEnabled bool
+	mouseMode    MouseMode
 	kittyActive  bool
 	kittyEnable  string
 	modifyOther  bool
@@ -117,11 +117,11 @@ type (
 		ctx context.Context
 		res chan cprResult
 	}
-	cmdEnableMouse struct{ enable bool }
-	cmdSetTitle    struct{ title string }
-	cmdSetProgress struct{ active bool }
-	cmdNotify      struct{ n Notification }
-	cmdDrain       struct {
+	cmdSetMouseMode struct{ mode MouseMode }
+	cmdSetTitle     struct{ title string }
+	cmdSetProgress  struct{ active bool }
+	cmdNotify       struct{ n Notification }
+	cmdDrain        struct {
 		max  time.Duration
 		idle time.Duration
 		done chan struct{}
@@ -176,6 +176,7 @@ func New(in, out *os.File, opts Options) (*Terminal, error) {
 		rows:               rows,
 		widthPx:            wPx,
 		heightPx:           hPx,
+		mouseMode:          MouseOff,
 		privateModeSupport: make(map[int]bool),
 		xtermScrollRestore: make(map[int]struct{}),
 		writeLog:           opts.WriteLog,
@@ -759,14 +760,70 @@ func (t *Terminal) Notify(n Notification) error {
 	return t.sendCmd(cmdNotify{n: n})
 }
 
-// EnableMouse enables SGR + any-event + basic mouse tracking.
-func (t *Terminal) EnableMouse() error {
-	return t.sendCmd(cmdEnableMouse{enable: true})
+// SetMouseMode applies one exact Hermes mouse tracking preset. A repeated
+// request for the active preset is a no-op; changing presets first clears every
+// tracking bit so hover or drag reports cannot leak from the previous mode.
+func (t *Terminal) SetMouseMode(mode MouseMode) error {
+	if !mode.Valid() {
+		return errInvalidMouseMode
+	}
+	return t.sendCmd(cmdSetMouseMode{mode: mode})
 }
 
-// DisableMouse disables mouse tracking modes.
+// EnableMouse is the compatibility wrapper for Hermes' maximal mouse preset.
+func (t *Terminal) EnableMouse() error {
+	return t.SetMouseMode(MouseAll)
+}
+
+// DisableMouse is the compatibility wrapper for disabling mouse tracking.
 func (t *Terminal) DisableMouse() error {
-	return t.sendCmd(cmdEnableMouse{enable: false})
+	return t.SetMouseMode(MouseOff)
+}
+
+func mouseEnableSequence(mode MouseMode) string {
+	switch mode {
+	case MouseWheel:
+		return seqMouseWheelEnable
+	case MouseButtons:
+		return seqMouseButtonsEnable
+	case MouseAll:
+		return seqMouseAllEnable
+	default:
+		return ""
+	}
+}
+
+func mouseTransitionSequence(mode MouseMode) string {
+	return seqMouseDisableAll + mouseEnableSequence(mode)
+}
+
+// setMouseMode runs on the input coordinator, which serializes ordinary mode
+// transitions. Stop can race an already-queued command, so a command that loses
+// that race resets the modes once more rather than re-arming the parent shell.
+func (t *Terminal) setMouseMode(mode MouseMode) {
+	if !mode.Valid() {
+		return
+	}
+	t.mu.Lock()
+	if t.stopped || t.dead || t.mouseMode == mode {
+		t.mu.Unlock()
+		return
+	}
+	t.mu.Unlock()
+
+	if err := t.directWrite([]byte(mouseTransitionSequence(mode))); err != nil {
+		return
+	}
+
+	t.mu.Lock()
+	stopped := t.stopped
+	if !stopped {
+		t.mouseMode = mode
+	}
+	t.mu.Unlock()
+	if stopped {
+		_ = t.directWrite([]byte(seqMouseDisableAll))
+	}
 }
 
 // EnterAltScreen enters the alternate screen (explicit only).
@@ -876,6 +933,9 @@ func (t *Terminal) restore(full bool) error {
 	_ = t.writeRaw([]byte(seqBracketedPasteDisable))
 	_ = t.writeRaw([]byte(seqEnhancedPasteDisable))
 	_ = t.writeRaw([]byte(seqMouseDisableAll))
+	t.mu.Lock()
+	t.mouseMode = MouseOff
+	t.mu.Unlock()
 	_ = t.writeRaw([]byte(seqMode2031Disable))
 
 	t.mu.Lock()
@@ -1259,18 +1319,8 @@ func (t *Terminal) handleCmd(cmd any) {
 	switch c := cmd.(type) {
 	case cmdQueryCPR:
 		t.doCPR(c)
-	case cmdEnableMouse:
-		if c.enable {
-			_ = t.directWrite([]byte(seqMouseBasicEnable + seqMouseAnyEnable + seqMouseSGREnable))
-			t.mu.Lock()
-			t.mouseEnabled = true
-			t.mu.Unlock()
-		} else {
-			_ = t.directWrite([]byte(seqMouseDisableAll))
-			t.mu.Lock()
-			t.mouseEnabled = false
-			t.mu.Unlock()
-		}
+	case cmdSetMouseMode:
+		t.setMouseMode(c.mode)
 	case cmdSetTitle:
 		_ = t.directWrite([]byte("\x1b]0;" + c.title + "\x07"))
 	case cmdSetProgress:

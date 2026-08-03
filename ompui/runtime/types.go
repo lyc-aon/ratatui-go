@@ -30,6 +30,27 @@ func (a Appearance) String() string {
 	}
 }
 
+// MouseMode is a Hermes-compatible DEC mouse tracking preset. Each preset
+// includes SGR encoding and differs only in the motion reports it requests.
+type MouseMode string
+
+const (
+	MouseOff     MouseMode = "off"
+	MouseWheel   MouseMode = "wheel"
+	MouseButtons MouseMode = "buttons"
+	MouseAll     MouseMode = "all"
+)
+
+// Valid reports whether m names a supported mouse tracking preset.
+func (m MouseMode) Valid() bool {
+	switch m {
+	case MouseOff, MouseWheel, MouseButtons, MouseAll:
+		return true
+	default:
+		return false
+	}
+}
+
 // CursorPosition is a 0-based cursor coordinate from CPR (CSI 6 n).
 type CursorPosition struct {
 	// Col is 0-based column.

@@ -30,14 +30,21 @@ const (
 
 	seqEnhancedPasteDisable = "\x1b[?5522l"
 
-	seqMouseSGREnable  = "\x1b[?1006h"
-	seqMouseSGRDisable = "\x1b[?1006l"
-	seqMouseAnyEnable  = "\x1b[?1003h"
-	seqMouseAnyDisable = "\x1b[?1003l"
-	seqMouseBasicEnable  = "\x1b[?1000h"
-	seqMouseBasicDisable = "\x1b[?1000l"
+	seqMouseSGREnable     = "\x1b[?1006h"
+	seqMouseSGRDisable    = "\x1b[?1006l"
+	seqMouseAnyEnable     = "\x1b[?1003h"
+	seqMouseAnyDisable    = "\x1b[?1003l"
+	seqMouseButtonEnable  = "\x1b[?1002h"
+	seqMouseButtonDisable = "\x1b[?1002l"
+	seqMouseBasicEnable   = "\x1b[?1000h"
+	seqMouseBasicDisable  = "\x1b[?1000l"
 
-	seqMouseDisableAll = seqMouseSGRDisable + seqMouseAnyDisable + seqMouseBasicDisable
+	// Hermes presets always use SGR reports. Reset first on every mode change
+	// so a transition cannot leave a more permissive tracking bit armed.
+	seqMouseWheelEnable   = seqMouseBasicEnable + seqMouseSGREnable
+	seqMouseButtonsEnable = seqMouseBasicEnable + seqMouseButtonEnable + seqMouseSGREnable
+	seqMouseAllEnable     = seqMouseBasicEnable + seqMouseButtonEnable + seqMouseAnyEnable + seqMouseSGREnable
+	seqMouseDisableAll    = seqMouseSGRDisable + seqMouseAnyDisable + seqMouseButtonDisable + seqMouseBasicDisable
 
 	seqHideCursor = "\x1b[?25l"
 	seqShowCursor = "\x1b[?25h"
@@ -51,9 +58,9 @@ const (
 	seqProgressClear  = "\x1b]9;4;0;\x07"
 
 	// Mode numbers probed via DECRQM.
-	modeSyncOutput      = 2026
-	modeInBandResize    = 2048
-	modeAppearanceNotif = 2031
+	modeSyncOutput           = 2026
+	modeInBandResize         = 2048
+	modeAppearanceNotif      = 2031
 	modeScrollBottomOnOutput = 1010
 	modeScrollBottomOnKey    = 1011
 )

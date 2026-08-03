@@ -11,4 +11,5 @@ var (
 	errTerminalDead     = errors.New("runtime: terminal write failed")
 	errCPRTimeout       = errors.New("runtime: cursor position query timed out")
 	errInputClosed      = errors.New("runtime: input closed")
+	errInvalidMouseMode = errors.New("runtime: invalid mouse mode")
 )
