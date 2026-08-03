@@ -1,6 +1,7 @@
 package view
 
 import (
+	"strings"
 	"time"
 
 	"github.com/lyc-aon/ratatui-go/ompui/component"
@@ -54,21 +55,62 @@ type ImageRequest struct {
 // transmit, and purge lifecycle; the view only asks for rows.
 type ImageAdapter func(req ImageRequest) component.Component
 
+// DetailMode controls whether a transcript detail section is omitted, summarized,
+// or rendered in full. The empty value defers to the legacy boolean option for
+// that section, so existing hosts retain their current behavior.
+type DetailMode string
+
+const (
+	DetailModeHidden    DetailMode = "hidden"
+	DetailModeCollapsed DetailMode = "collapsed"
+	DetailModeExpanded  DetailMode = "expanded"
+)
+
+// Valid reports whether m is one of Hermes' supported detail section modes.
+func (m DetailMode) Valid() bool {
+	switch m {
+	case DetailModeHidden, DetailModeCollapsed, DetailModeExpanded:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseDetailMode parses a Hermes detail mode without making callers duplicate
+// normalization rules for persisted configuration values.
+func ParseDetailMode(value string) (DetailMode, bool) {
+	mode := DetailMode(strings.ToLower(strings.TrimSpace(value)))
+	return mode, mode.Valid()
+}
+
 // Options configures every view in this package. The zero value is valid and
 // renders the quiet default: collapsed tools, no timestamps, prose capped at
 // [defaultProseWidth], metadata fallback for images.
 type Options struct {
 	// Tight drops the horizontal breathing room around block bodies.
 	Tight bool
-	// ToolsExpanded mirrors OMP's ctrl+o expansion state.
+	// ToolsExpanded is the legacy ctrl+o expansion state. ToolsMode wins when
+	// it is one of the supported detail modes.
 	ToolsExpanded bool
+	// ToolsMode controls tool detail visibility independently of reasoning.
+	// Its empty value falls back to ToolsExpanded for compatibility.
+	ToolsMode DetailMode
 	// ShowTimestamps adds a dim clock to user turns. OMP does not show these by
 	// default and neither does this package.
 	ShowTimestamps bool
-	// HideThinking suppresses visible reasoning bodies, leaving the pulse.
+	// HideThinking is the legacy reasoning visibility switch. ThinkingMode wins
+	// when it is one of the supported detail modes.
 	HideThinking bool
+	// ThinkingMode controls reasoning visibility independently of tool cards.
+	// Its empty value falls back to HideThinking for compatibility.
+	ThinkingMode DetailMode
 	// ProseOnlyThinking strips non-prose scaffolding from reasoning text.
 	ProseOnlyThinking bool
+
+	// FocusView reduces the transcript to operator prompts and assistant prose.
+	// It overrides detail modes for thinking, tools, summaries, and custom
+	// activity while retaining visible failures and turn-ending errors.
+	FocusView bool
 
 	// MaxProseWidth caps markdown body columns. 0 uses [defaultProseWidth];
 	// a negative value disables the cap.
@@ -82,9 +124,9 @@ type Options struct {
 	// Empty hides the hint entirely.
 	ExpandHint string
 
-	// Now, when non-zero, lets running tool cards show elapsed time. Left zero
-	// the cards stay time-free, which keeps renders a pure function of the
-	// snapshot.
+	// Now, when non-zero, lets running tool cards and the status rule show
+	// deterministic elapsed time. Left zero the view stays time-free, which
+	// keeps renders a pure function of the snapshot.
 	Now time.Time
 
 	// AnimationFrame, when positive, overrides the snapshot-derived frame index
@@ -108,7 +150,7 @@ func (o Options) proseWidth(width int) int {
 }
 
 func (o Options) toolPreviewLines() int {
-	if o.ToolsExpanded {
+	if o.toolsExpanded() {
 		if o.ToolExpandedLines > 0 {
 			return o.ToolExpandedLines
 		}
@@ -118,6 +160,37 @@ func (o Options) toolPreviewLines() int {
 		return o.ToolPreviewLines
 	}
 	return defaultToolPreviewLines
+}
+
+func (o Options) thinkingMode() DetailMode {
+	if o.ThinkingMode.Valid() {
+		return o.ThinkingMode
+	}
+	if o.HideThinking {
+		return DetailModeHidden
+	}
+	return DetailModeExpanded
+}
+
+func (o Options) toolsMode() DetailMode {
+	if o.ToolsMode.Valid() {
+		return o.ToolsMode
+	}
+	if o.ToolsExpanded {
+		return DetailModeExpanded
+	}
+	return DetailModeCollapsed
+}
+
+func (o Options) toolsExpanded() bool {
+	return o.toolsMode() == DetailModeExpanded
+}
+
+// detailModesExplicit reports whether the host opted into Hermes' section modes.
+// One valid mode is enough: the transcript's structure is shared by both
+// sections, so it cannot be half Hermes and half OMP.
+func (o Options) detailModesExplicit() bool {
+	return o.ThinkingMode.Valid() || o.ToolsMode.Valid()
 }
 
 // frame returns the animation cycle position for a snapshot generation.

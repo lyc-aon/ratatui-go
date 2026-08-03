@@ -237,7 +237,7 @@ type jsonTreeOptions struct {
 }
 
 func (o Options) jsonTreeOptions(width int) jsonTreeOptions {
-	if o.ToolsExpanded {
+	if o.toolsExpanded() {
 		return jsonTreeOptions{
 			maxDepth:  jsonMaxDepthExpanded,
 			maxLines:  jsonMaxLinesExpanded,

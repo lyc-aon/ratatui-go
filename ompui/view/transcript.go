@@ -25,18 +25,142 @@ const (
 	blockUser blockKind = iota
 	blockAssistant
 	blockTool
+	blockTrail
 	blockSummary
 	blockCustom
 )
 
+// blockGroup is the visual band a block belongs to. Blocks in the same band
+// render flush; a single blank row opens where the band changes. So a run of
+// tool trails — or of model paragraphs — reads as one section and the eye only
+// catches a gap where the kind of content actually changed.
+//
+// Port of Hermes domain/blockLayout.ts.
+type blockGroup uint8
+
+const (
+	// groupModel is assistant prose, the model's voice.
+	groupModel blockGroup = iota
+	// groupTrail is the agent's working area: reasoning and tool calls.
+	groupTrail
+	// groupNote is system notes and errors, a quieter band.
+	groupNote
+	// groupUser is the human turn; it owns its own margins.
+	groupUser
+	// groupSlash is a slash-command echo; it owns its top margin.
+	groupSlash
+	// groupDiff is an inline patch segment; an island owning both margins.
+	groupDiff
+	// groupEvent is a timeline marker; it owns its trailing margin.
+	groupEvent
+)
+
+// selfSpaced groups own the blank row above them through their own chrome, so the
+// grouping rule must not add a second one.
+func (g blockGroup) selfSpaced() bool {
+	switch g {
+	case groupUser, groupSlash, groupDiff, groupEvent:
+		return true
+	default:
+		return false
+	}
+}
+
+// paintsTrailingGap groups already draw a blank row beneath themselves, so the
+// block below must not add its own leading gap or one boundary becomes two.
+func (g blockGroup) paintsTrailingGap() bool {
+	switch g {
+	case groupUser, groupDiff, groupEvent:
+		return true
+	default:
+		return false
+	}
+}
+
+// topMargin is the blank row a group always draws above itself.
+func (g blockGroup) topMargin() bool {
+	switch g {
+	case groupUser, groupSlash, groupDiff:
+		return true
+	default:
+		return false
+	}
+}
+
+// hasLeadGap reports whether cur opens one blank row against the block rendered
+// directly above it. True only where the band changes, and only for the
+// working-area bands — user, slash, diff, and event keep their own spacing.
+//
+// Streaming-safe by construction: the result depends on the predecessor's group,
+// never on cur's own live content, so an actively streaming block computes the
+// same gap while it streams as the settled segment does once it flushes.
+func hasLeadGap(prev blockGroup, havePrev bool, cur blockGroup) bool {
+	if cur.selfSpaced() || !havePrev {
+		return false
+	}
+	return prev != cur && !prev.paintsTrailingGap()
+}
+
+// separatorRows is how many blank rows sit between two rendered blocks: the
+// predecessor's trailing margin plus the successor's own leading gap. The two are
+// independent margins, not one collapsing gap — which is exactly why the groups
+// that paint a trailing row suppress the successor's lead gap.
+func separatorRows(prev blockGroup, havePrev bool, cur blockGroup) int {
+	if !havePrev {
+		return 0
+	}
+	rows := 0
+	if prev.paintsTrailingGap() {
+		rows++
+	}
+	if cur.topMargin() || hasLeadGap(prev, havePrev, cur) {
+		rows++
+	}
+	return rows
+}
+
+// messageGroup maps a message onto its visual band.
+func messageGroup(msg model.Message) blockGroup {
+	return groupFor(readExtras(msg), msg)
+}
+
+// groupFor resolves a band from already-parsed extras, so a spec walk pays for
+// one payload parse per message rather than one per lookup.
+func groupFor(extras messageExtras, msg model.Message) blockGroup {
+	switch extras.Kind {
+	case blockKindSlash:
+		return groupSlash
+	case blockKindEvent:
+		return groupEvent
+	case blockKindDiff:
+		return groupDiff
+	case blockKindTrail:
+		return groupTrail
+	}
+	switch ClassifyMessage(msg) {
+	case KindUser:
+		return groupUser
+	case KindAssistant:
+		return groupModel
+	default:
+		return groupNote
+	}
+}
+
 // blockSpec is the render recipe for one transcript block, resolved from the
 // snapshot once per SetSnapshot rather than once per frame.
 type blockSpec struct {
-	key  string
-	kind blockKind
+	key   string
+	kind  blockKind
+	group blockGroup
 
-	msg  model.Message
-	card ToolCard
+	msg   model.Message
+	card  ToolCard
+	trail Trail
+
+	// responseSep marks an assistant body whose turn also rendered a trail, so
+	// the answer earns Hermes' `Response` rule above it.
+	responseSep bool
 
 	// live marks a block that can still change: a streaming turn, a tool
 	// without a terminal result.
@@ -46,6 +170,10 @@ type blockSpec struct {
 	// preview is replaced wholesale by the result render, so committing those
 	// rows would strand a stale copy in immutable history.
 	durable bool
+	// holdback is how many trailing rows must never be offered commit-safe. A
+	// streaming body's in-flight tail re-renders on every delta, so its rows
+	// cannot reach immutable scrollback until the tail settles.
+	holdback int
 }
 
 // transcriptBlock is one block's retained render state.
@@ -57,13 +185,17 @@ type transcriptBlock struct {
 	built bool
 
 	// sep is the separator row count this block contributed in the last
-	// assembly (0 or 1).
+	// assembly.
 	sep int
 	// startRow is where this block's content began in the last assembly.
 	startRow int
+	// group is the visual band this block rendered in, retained so the next
+	// assembly can compute its own separators without re-resolving specs.
+	group blockGroup
 
-	live    bool
-	durable bool
+	live     bool
+	durable  bool
+	holdback int
 
 	// rewritten latches once the block re-laid out a row it had already
 	// rendered outside the streaming edge, or rewrote a row already offered as
@@ -116,10 +248,14 @@ func (t *Transcript) SetTheme(theme Theme) {
 	t.Invalidate()
 }
 
-// SetOptions rebinds render options and drops every cached block.
+// SetOptions rebinds render options, drops every cached block, and re-resolves
+// the block list. Detail modes decide the block structure itself — an explicit
+// mode groups a turn's calls into one trail where the legacy layout gives each
+// call its own card — so a mode change must rebuild specs, not just rows.
 func (t *Transcript) SetOptions(opts Options) {
 	t.r = NewRenderer(t.r.theme, opts)
 	t.Invalidate()
+	t.specs = t.buildSpecs(t.snap)
 }
 
 // SetIgnoreTight implements component.TightLayoutAware.
@@ -170,16 +306,16 @@ func (t *Transcript) UnsupportedKinds() []string { return t.missing }
 // the messages once per snapshot, not once per frame, so a resize replays the
 // same recipe without re-deriving it.
 //
-// Tool expansion follows the snapshot: the core owns that toggle, and a view
-// that kept its own copy would drift out of sync the first time the user
-// pressed the expand key. A host that wants to override it calls SetOptions
-// after SetSnapshot.
+// Tool expansion follows the snapshot only while ToolsMode uses its legacy
+// fallback. An explicit detail mode belongs to the host and must not be
+// overwritten by a status update.
 func (t *Transcript) SetSnapshot(snap model.Snapshot) {
 	t.snap = snap
-	if snap.Status.ToolsExpanded != t.r.opts.ToolsExpanded {
+	if !t.r.opts.ToolsMode.Valid() && snap.Status.ToolsExpanded != t.r.opts.ToolsExpanded {
 		opts := t.r.opts
 		opts.ToolsExpanded = snap.Status.ToolsExpanded
-		t.SetOptions(opts)
+		t.r = NewRenderer(t.r.theme, opts)
+		t.Invalidate()
 	}
 	t.specs = t.buildSpecs(snap)
 }
@@ -210,6 +346,11 @@ func (t *Transcript) buildSpecs(snap model.Snapshot) []blockSpec {
 		execByID[snap.Tools[i].ID] = i
 	}
 
+	// Hermes' grouped trail replaces the per-call card once a host opts into an
+	// explicit detail mode. Focus view keeps the legacy shape so its failure
+	// backstop stays beneath the answer it belongs to.
+	grouped := t.r.opts.detailModesExplicit() && !t.r.opts.FocusView
+
 	specs := make([]blockSpec, 0, len(messages)+len(snap.Tools))
 	usedExec := make(map[string]struct{}, len(snap.Tools))
 	var missing []string
@@ -217,31 +358,64 @@ func (t *Transcript) buildSpecs(snap model.Snapshot) []blockSpec {
 
 	for i := range messages {
 		msg := messages[i]
+		extras := readExtras(msg)
 		index := strconv.Itoa(i)
+
+		// A Hermes block kind outranks the message role: an event marker, a diff
+		// segment, and a plan block have their own voice regardless of who the
+		// core attributed them to. A slash echo keeps the operator gutter, so it
+		// stays on the user path and only changes band.
+		switch {
+		case extras.Kind == blockKindEvent, extras.Kind == blockKindDiff,
+			extras.Kind == blockKindTrail, len(extras.Todos) > 0:
+			specs = append(specs, blockSpec{
+				key: index + ":block", kind: blockCustom, group: groupFor(extras, msg), msg: msg, durable: true,
+			})
+			continue
+		}
+
 		switch ClassifyMessage(msg) {
 		case KindUser:
-			specs = append(specs, blockSpec{key: index + ":user", kind: blockUser, msg: msg, durable: true})
+			specs = append(specs, blockSpec{
+				key: index + ":user", kind: blockUser, group: groupFor(extras, msg), msg: msg, durable: true,
+			})
 
 		case KindAssistant:
+			cards := t.messageCards(msg, snap, execByID, resultByCall, messages, usedExec)
+			responseSep := false
+			if grouped {
+				trail := t.r.MessageTrail(msg)
+				trail.Cards = cards
+				specs = appendTrailSpec(specs, index, trail)
+				// The rule belongs to the turn that did the work. A trail merged
+				// in from an earlier turn already sits above its own answer, so
+				// only this message's own details earn it.
+				responseSep = t.r.trailShowsDetails(trail)
+				if !t.r.assistantBodyRenders(msg) {
+					// Nothing to answer with yet. Skipping the block keeps it
+					// transparent to grouping, so the trail above it never
+					// strands a floating blank row against the next turn.
+					continue
+				}
+			}
 			// A streaming turn is durable content unless its markdown is still
 			// reflowing: a mermaid diagram reshaping or a table re-aligning its
 			// columns re-lays-out rows that were already on screen, and those
 			// rows must not reach immutable scrollback until the layout settles.
 			specs = append(specs, blockSpec{
-				key:     index + ":assistant",
-				kind:    blockAssistant,
-				msg:     msg,
-				live:    msg.Streaming,
-				durable: !msg.Streaming || !messageHasReflowingMarkdown(msg),
+				key:         index + ":assistant",
+				kind:        blockAssistant,
+				group:       groupModel,
+				msg:         msg,
+				responseSep: responseSep,
+				live:        msg.Streaming,
+				durable:     !msg.Streaming || !messageHasReflowingMarkdown(msg),
+				holdback:    streamHoldback(msg),
 			})
-			for _, block := range msg.Content {
-				if block.Kind != model.ContentToolCall || block.ToolCall == nil {
-					continue
+			if !grouped {
+				for _, card := range cards {
+					specs = append(specs, toolCardSpec("tool:"+card.ID, card))
 				}
-				call := block.ToolCall
-				spec := t.toolSpec(call, snap, execByID, resultByCall, messages)
-				usedExec[call.ID] = struct{}{}
-				specs = append(specs, spec)
 			}
 
 		case KindToolResult:
@@ -253,41 +427,50 @@ func (t *Transcript) buildSpecs(snap model.Snapshot) []blockSpec {
 			result := msg
 			card := ToolCardFrom(nil, execAt(snap, execByID, msg.ToolCallID), &result)
 			usedExec[msg.ToolCallID] = struct{}{}
+			if grouped {
+				specs = appendTrailSpec(specs, index, Trail{Cards: []ToolCard{card}})
+				continue
+			}
 			specs = append(specs, blockSpec{
-				key: index + ":toolresult", kind: blockTool, card: card, durable: true,
+				key: index + ":toolresult", kind: blockTool, group: groupTrail, card: card, durable: true,
 			})
 
 		case KindSummary:
-			specs = append(specs, blockSpec{key: index + ":summary", kind: blockSummary, msg: msg, durable: true})
+			specs = append(specs, blockSpec{
+				key: index + ":summary", kind: blockSummary, group: groupNote, msg: msg, durable: true,
+			})
 
 		default:
-			extras := readExtras(msg)
 			kindName := firstNonEmpty(extras.CustomType, msg.Role)
-			if kindName != "" {
+			if kindName != "" && extras.Kind == "" {
 				if _, seen := seenMissing[kindName]; !seen {
 					seenMissing[kindName] = struct{}{}
 					missing = append(missing, kindName)
 				}
 			}
-			specs = append(specs, blockSpec{key: index + ":custom", kind: blockCustom, msg: msg, durable: true})
+			specs = append(specs, blockSpec{
+				key: index + ":custom", kind: blockCustom, group: groupFor(extras, msg), msg: msg, durable: true,
+			})
 		}
 	}
 
 	// Executions the assistant has not yet published a call block for still
 	// belong on screen: they are the work happening right now.
+	var orphans []ToolCard
 	for i := range snap.Tools {
 		exec := snap.Tools[i]
 		if _, used := usedExec[exec.ID]; used {
 			continue
 		}
 		card := ToolCardFrom(nil, &snap.Tools[i], nil)
-		specs = append(specs, blockSpec{
-			key:     "exec:" + exec.ID,
-			kind:    blockTool,
-			card:    card,
-			live:    !card.Settled(),
-			durable: card.Settled(),
-		})
+		if grouped {
+			orphans = append(orphans, card)
+			continue
+		}
+		specs = append(specs, toolCardSpec("exec:"+exec.ID, card))
+	}
+	if len(orphans) > 0 {
+		specs = appendTrailSpec(specs, "exec:"+orphans[0].ID, Trail{Cards: orphans})
 	}
 
 	sort.Strings(missing)
@@ -295,25 +478,98 @@ func (t *Transcript) buildSpecs(snap model.Snapshot) []blockSpec {
 	return specs
 }
 
-func (t *Transcript) toolSpec(
-	call *model.ToolCall,
-	snap model.Snapshot,
-	execByID map[string]int,
-	resultByCall map[string]int,
-	messages []model.Message,
-) blockSpec {
-	var result *model.Message
-	if idx, ok := resultByCall[call.ID]; ok {
-		result = &messages[idx]
+// appendTrailSpec adds a trail block, merging into the trail immediately above it
+// when there is one. Adjacent calls belong to one working area, so a turn that
+// only emits more calls extends the run rather than opening a second panel — that
+// is what makes `Tool calls (N)` count the whole run.
+//
+// Merging is keyed on the snapshot's own message and tool-call identity, so the
+// grouping is a pure function of the snapshot and identical across frames.
+func appendTrailSpec(specs []blockSpec, key string, trail Trail) []blockSpec {
+	if trail.Empty() {
+		return specs
 	}
-	card := ToolCardFrom(call, execAt(snap, execByID, call.ID), result)
+	if n := len(specs); n > 0 && specs[n-1].kind == blockTrail {
+		prev := &specs[n-1]
+		if reasoning := strings.TrimSpace(trail.Reasoning); reasoning != "" {
+			if strings.TrimSpace(prev.trail.Reasoning) == "" {
+				prev.trail.Reasoning = reasoning
+			} else {
+				prev.trail.Reasoning += "\n\n" + reasoning
+			}
+		}
+		prev.trail.Cards = append(prev.trail.Cards, trail.Cards...)
+		prev.trail.ReasoningRedacted = prev.trail.ReasoningRedacted || trail.ReasoningRedacted
+		prev.trail.ReasoningActive = trail.ReasoningActive
+		prev.trail.ReasoningTokens += trail.ReasoningTokens
+		prev.trail.ToolTokens += trail.ToolTokens
+		prev.key += "+" + key
+		prev.live = !prev.trail.Settled()
+		prev.durable = prev.trail.Settled()
+		return specs
+	}
+	return append(specs, blockSpec{
+		key:     key + ":trail",
+		kind:    blockTrail,
+		group:   groupTrail,
+		trail:   trail,
+		live:    !trail.Settled(),
+		durable: trail.Settled(),
+	})
+}
+
+// toolCardSpec is the legacy one-card-per-call block.
+func toolCardSpec(key string, card ToolCard) blockSpec {
 	return blockSpec{
-		key:     "tool:" + call.ID,
+		key:     key,
 		kind:    blockTool,
+		group:   groupTrail,
 		card:    card,
 		live:    !card.Settled(),
 		durable: card.Settled(),
 	}
+}
+
+// messageCards assembles every tool card a message requested, folding in the live
+// execution and the eventual result.
+func (t *Transcript) messageCards(
+	msg model.Message,
+	snap model.Snapshot,
+	execByID map[string]int,
+	resultByCall map[string]int,
+	messages []model.Message,
+	usedExec map[string]struct{},
+) []ToolCard {
+	var cards []ToolCard
+	for _, block := range msg.Content {
+		if block.Kind != model.ContentToolCall || block.ToolCall == nil {
+			continue
+		}
+		call := block.ToolCall
+		var result *model.Message
+		if idx, ok := resultByCall[call.ID]; ok {
+			result = &messages[idx]
+		}
+		cards = append(cards, ToolCardFrom(call, execAt(snap, execByID, call.ID), result))
+		usedExec[call.ID] = struct{}{}
+	}
+	return cards
+}
+
+// streamHoldback is how many trailing rows of a streaming turn must stay out of
+// the commit-safe prefix: the physical lines of the in-flight tail, which is the
+// only region a later delta can re-render. See [FindStableBoundary].
+func streamHoldback(msg model.Message) int {
+	if !msg.Streaming {
+		return 0
+	}
+	rows := 0
+	for _, block := range msg.Content {
+		if block.Kind == model.ContentText {
+			rows += liveTailRows(block.Text)
+		}
+	}
+	return rows
 }
 
 func execAt(snap model.Snapshot, execByID map[string]int, id string) *model.ToolExecution {
@@ -339,21 +595,26 @@ func (t *Transcript) Render(width int) component.Frame {
 
 	t.syncBlocks()
 
-	// First pass: bring every block's rows up to date.
+	// First pass: bring every block's rows up to date. Separators come from the
+	// visual bands of the last block that actually rendered and this one, so a
+	// block that draws nothing is transparent to grouping.
 	rowCursor := 0
+	var prevGroup blockGroup
+	havePrev := false
 	for i := range t.specs {
 		block := t.blocks[i]
 		spec := &t.specs[i]
 
 		sep := 0
-		if rowCursor > 0 {
-			sep = 1
+		if len(block.lines) > 0 {
+			sep = separatorRows(prevGroup, havePrev, spec.group)
 		}
 
 		if t.canReplayCommitted(block, width, rowCursor, sep, committedRows) {
 			// Rows already in immutable scrollback: reuse verbatim, skipping
 			// both the content hash and the layout.
 			rowCursor += sep + len(block.lines)
+			prevGroup, havePrev = spec.group, true
 			continue
 		}
 
@@ -362,10 +623,22 @@ func (t *Transcript) Render(width int) component.Frame {
 			block.sep = sep
 			block.startRow = rowCursor + sep
 			rowCursor += sep + len(block.lines)
+			if len(block.lines) > 0 {
+				prevGroup, havePrev = spec.group, true
+			}
 			continue
 		}
 
 		lines := t.renderSpec(spec, width)
+		// An omitted detail section occupies no row and therefore cannot
+		// consume a phantom seam. This matters when hidden thinking/tools sit
+		// between durable transcript blocks: their later block coordinates must
+		// agree with the assembled frame for viewport virtualization.
+		sep = 0
+		if len(lines) > 0 {
+			sep = separatorRows(prevGroup, havePrev, spec.group)
+			prevGroup, havePrev = spec.group, true
+		}
 		t.observeChange(block, lines, widthChanged)
 		block.lines = lines
 		block.hash = hash
@@ -373,6 +646,8 @@ func (t *Transcript) Render(width int) component.Frame {
 		block.built = true
 		block.live = spec.live
 		block.durable = spec.durable
+		block.holdback = spec.holdback
+		block.group = spec.group
 		block.sep = sep
 		block.startRow = rowCursor + sep
 		rowCursor += sep + len(lines)
@@ -394,8 +669,10 @@ func (t *Transcript) Render(width int) component.Frame {
 		if len(block.lines) == 0 {
 			continue
 		}
-		if block.sep == 1 && len(lines) > 0 {
-			lines = append(lines, "")
+		if len(lines) > 0 {
+			for range block.sep {
+				lines = append(lines, "")
+			}
 		}
 		lines = append(lines, block.lines...)
 	}
@@ -430,7 +707,7 @@ func (t *Transcript) Render(width int) component.Frame {
 // what "committed rows are never rewritten" means in practice, and it removes
 // hashing and layout for the bulk of a long session.
 func (t *Transcript) canReplayCommitted(block *transcriptBlock, width, rowCursor, sep, committedRows int) bool {
-	if !t.valid || !block.built || block.width != width || committedRows <= 0 {
+	if !t.valid || !block.built || len(block.lines) == 0 || block.width != width || committedRows <= 0 {
 		return false
 	}
 	if block.startRow != rowCursor+sep || block.sep != sep {
@@ -459,13 +736,19 @@ func (t *Transcript) syncBlocks() {
 }
 
 func (t *Transcript) renderSpec(spec *blockSpec, width int) []string {
+	frame := t.r.opts.frame(t.snap.Generation)
 	switch spec.kind {
 	case blockUser:
 		return t.r.UserMessage(spec.msg, width)
 	case blockAssistant:
-		return t.r.AssistantMessage(spec.msg, width, t.r.opts.frame(t.snap.Generation))
+		if t.r.opts.detailModesExplicit() && !t.r.opts.FocusView {
+			return t.r.AssistantBody(spec.msg, width, spec.responseSep)
+		}
+		return t.r.AssistantMessage(spec.msg, width, frame)
+	case blockTrail:
+		return t.r.TrailRows(spec.trail, width, frame)
 	case blockTool:
-		return t.r.ToolRows(spec.card, width)
+		return t.r.toolRows(spec.card, width, frame)
 	case blockSummary:
 		return t.r.SummaryMessage(spec.msg, width)
 	default:
@@ -495,6 +778,11 @@ func (t *Transcript) observeChange(block *transcriptBlock, lines []string, width
 }
 
 // commitOffer returns how many of a block's rows may be reported byte-stable.
+//
+// A live block always withholds its bottom rows: real streaming is not strictly
+// append-only at the edge. The floor is [tailHoldback]; a streaming body raises it
+// to cover its whole in-flight markdown tail, which is the only region a later
+// delta can re-render (see [FindStableBoundary]).
 func (b *transcriptBlock) commitOffer() int {
 	if !b.live {
 		return len(b.lines)
@@ -502,7 +790,11 @@ func (b *transcriptBlock) commitOffer() int {
 	if !b.durable || b.rewritten {
 		return b.offered
 	}
-	offer := len(b.lines) - tailHoldback
+	holdback := tailHoldback
+	if b.holdback > holdback {
+		holdback = b.holdback
+	}
+	offer := len(b.lines) - holdback
 	if offer < b.offered {
 		offer = b.offered
 	}
@@ -601,7 +893,16 @@ func (t *Transcript) RenderViewportTail(width, maxRows int) []string {
 	if width < 1 {
 		width = 1
 	}
-	collected := make([][]string, 0, 8)
+	// Walking upward, each collected block's separator is the one it draws
+	// against the block above it, so the count is resolved once the block above
+	// is known. This must agree with Render's assembly or the drag frame would
+	// disagree with the settle frame by a row.
+	type tailBlock struct {
+		lines []string
+		group blockGroup
+		sep   int
+	}
+	collected := make([]tailBlock, 0, 8)
 	rows := 0
 	for i := len(t.specs) - 1; i >= 0 && rows < maxRows; i-- {
 		spec := t.specs[i]
@@ -609,10 +910,11 @@ func (t *Transcript) RenderViewportTail(width, maxRows int) []string {
 		if len(lines) == 0 {
 			continue
 		}
-		if len(collected) > 0 {
-			rows++ // separator above the block below
+		if n := len(collected); n > 0 {
+			collected[n-1].sep = separatorRows(spec.group, true, collected[n-1].group)
+			rows += collected[n-1].sep
 		}
-		collected = append(collected, lines)
+		collected = append(collected, tailBlock{lines: lines, group: spec.group})
 		rows += len(lines)
 	}
 	if len(collected) == 0 {
@@ -622,9 +924,11 @@ func (t *Transcript) RenderViewportTail(width, maxRows int) []string {
 	out := make([]string, 0, rows)
 	for i := len(collected) - 1; i >= 0; i-- {
 		if len(out) > 0 {
-			out = append(out, "")
+			for range collected[i].sep {
+				out = append(out, "")
+			}
 		}
-		out = append(out, collected[i]...)
+		out = append(out, collected[i].lines...)
 	}
 	if len(out) > maxRows {
 		out = out[len(out)-maxRows:]
@@ -711,36 +1015,65 @@ func (t *Transcript) specHash(spec *blockSpec) uint64 {
 	h := hashString(fnvOffset, spec.key)
 	switch spec.kind {
 	case blockTool:
-		card := spec.card
-		h = hashString(h, card.Name)
-		h = hashString(h, card.Intent)
-		h = hashBytes(h, card.Arguments)
-		h = hashBytes(h, card.PartialResult)
-		h = hashBytes(h, card.Result)
-		h = hashBool(h, card.Running)
-		h = hashBool(h, card.HasResult)
-		h = hashBool(h, card.IsError)
-		h = hashInt(h, card.StartedAt.UnixMilli())
-		h = hashInt(h, card.EndedAt.UnixMilli())
-		if card.Running && !t.r.opts.Now.IsZero() {
-			// An injected clock makes running cards tick; fold it in at second
-			// resolution so the row actually refreshes.
-			h = hashInt(h, t.r.opts.Now.Unix())
+		h = t.hashCard(h, spec.card)
+		if t.r.trailPulses(Trail{Cards: []ToolCard{spec.card}}) {
+			// A hidden active card renders the generic pulse instead of its
+			// content, so each host-controlled frame must invalidate it.
+			h = hashInt(h, int64(t.r.opts.frame(t.snap.Generation)))
 		}
+		return h
+	case blockTrail:
+		h = hashString(h, spec.trail.Reasoning)
+		h = hashBool(h, spec.trail.ReasoningRedacted)
+		h = hashBool(h, spec.trail.ReasoningActive)
+		h = hashInt(h, int64(spec.trail.ReasoningTokens))
+		h = hashInt(h, int64(spec.trail.ToolTokens))
+		for i := range spec.trail.Cards {
+			h = t.hashCard(h, spec.trail.Cards[i])
+		}
+		if t.r.trailPulses(spec.trail) {
+			// A trail with no visible panel renders the generic pulse instead of
+			// its content, so each host-controlled frame must invalidate it.
+			h = hashInt(h, int64(t.r.opts.frame(t.snap.Generation)))
+		}
+		return h
 	case blockAssistant:
 		h = hashBytes(h, spec.msg.Raw)
 		h = hashBool(h, spec.msg.Streaming)
 		h = hashString(h, spec.msg.StopReason)
 		h = hashString(h, spec.msg.Error)
-		if spec.msg.Streaming && t.r.opts.HideThinking {
+		h = hashBool(h, spec.responseSep)
+		if t.r.shouldPulseThinking(spec.msg) {
 			// The reasoning pulse advances with the snapshot generation.
 			h = hashInt(h, int64(t.r.opts.frame(t.snap.Generation)))
 		}
+		return h
 	default:
 		h = hashBytes(h, spec.msg.Raw)
 		h = hashString(h, spec.msg.Role)
 		h = hashBool(h, spec.msg.Synthetic)
 		h = hashBool(h, spec.msg.IsError)
+		return h
+	}
+}
+
+// hashCard folds one tool card's rendered inputs into h.
+func (t *Transcript) hashCard(h uint64, card ToolCard) uint64 {
+	h = hashString(h, card.ID)
+	h = hashString(h, card.Name)
+	h = hashString(h, card.Intent)
+	h = hashBytes(h, card.Arguments)
+	h = hashBytes(h, card.PartialResult)
+	h = hashBytes(h, card.Result)
+	h = hashBool(h, card.Running)
+	h = hashBool(h, card.HasResult)
+	h = hashBool(h, card.IsError)
+	h = hashInt(h, card.StartedAt.UnixMilli())
+	h = hashInt(h, card.EndedAt.UnixMilli())
+	if card.Running && !t.r.opts.Now.IsZero() {
+		// An injected clock makes running cards tick; fold it in at second
+		// resolution so the row actually refreshes.
+		h = hashInt(h, t.r.opts.Now.Unix())
 	}
 	return h
 }

@@ -95,6 +95,79 @@ func ParseTodos(raw json.RawMessage) []TodoItem {
 	return out
 }
 
+// countPendingTodos counts tasks still open: not completed and not abandoned.
+func countPendingTodos(items []TodoItem) int {
+	n := 0
+	for _, item := range items {
+		if item.Status != TodoDone && item.Status != TodoAbandoned {
+			n++
+		}
+	}
+	return n
+}
+
+// TodoBlockRows renders a transcript plan block as Hermes' TodoPanel: a chevron
+// header carrying the progress count, then the tasks indented under it. Returns
+// nil when the message is not a plan block, so callers can chain it.
+//
+// A plan survives every detail mode. It is the operator's own checklist, not the
+// model's private reasoning, so /details never hides it.
+func (r Renderer) TodoBlockRows(msg model.Message, width int) []string {
+	extras := readExtras(msg)
+	items := ParseTodos(extras.Todos)
+	if len(items) == 0 {
+		return nil
+	}
+	return r.TodoPanelRows(items, width, extras.TodoCollapsedByDefault, extras.TodoIncomplete)
+}
+
+// TodoPanelRows renders a plan under a chevron header. A collapsed panel shows
+// only the header — the count is the whole summary a settled plan needs.
+func (r Renderer) TodoPanelRows(items []TodoItem, width int, collapsed, incomplete bool) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	layout := r.opts.layout(width)
+	inset := padding(layout.Inset)
+
+	done := 0
+	for _, item := range items {
+		if item.Status == TodoDone {
+			done++
+		}
+	}
+	pending := countPendingTodos(items)
+
+	header := apply(r.theme.Accent, detailChevron(r.theme.Symbols, !collapsed)+" ") +
+		apply(r.theme.Bold, apply(r.theme.Text, "Todo")) +
+		apply(r.theme.Dim, " ("+strconv.Itoa(done)+"/"+strconv.Itoa(len(items))+")")
+	if incomplete && pending > 0 {
+		state := "pending/in_progress"
+		if pending == 1 {
+			state = "pending"
+		}
+		header += apply(r.theme.Dim, r.theme.Symbols.Sep+"incomplete"+r.theme.Symbols.Sep+
+			strconv.Itoa(pending)+" still "+state)
+	}
+	out := []string{inset + fit(header, layout.Body, r.theme.Symbols.Ellipsis)}
+	if collapsed {
+		return out
+	}
+
+	body := inset + "  "
+	for _, item := range items {
+		mark, style := r.todoGlyph(item.Status)
+		text := flattenLine(item.Content)
+		if item.Status == TodoDone || item.Status == TodoAbandoned {
+			text = apply(r.theme.Dim, text)
+		} else {
+			text = apply(r.theme.Text, text)
+		}
+		out = append(out, fit(body+apply(style, mark)+" "+text, layout.Width, r.theme.Symbols.Ellipsis))
+	}
+	return out
+}
+
 func (r Renderer) todoGlyph(status TodoStatus) (string, StyleFunc) {
 	sym := r.theme.Symbols
 	switch status {

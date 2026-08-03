@@ -180,44 +180,11 @@ func sortedStatusEntries(entries map[string]string) []string {
 	return out
 }
 
-// StatusLineRows renders the single-row status summary: what model is answering,
-// how full the context is, and whether anything is running.
-//
-// Segments shed right-to-left as the terminal narrows, so the model identity —
-// the one thing that changes the meaning of everything else on screen — is the
-// last thing to go.
+// StatusLineRows renders the Hermes-style status rule without host-only facts.
+// Hosts that have those facts should call [Renderer.StatusRuleRows] or install
+// [StatusInfo] on a [StatusLine].
 func (r Renderer) StatusLineRows(snap model.Snapshot, width int) []string {
-	layout := r.opts.layout(width)
-	sym := r.theme.Symbols
-	usage := ParseContextUsage(snap.Session.ContextUsage)
-	modelInfo := ParseModel(snap.Session.Model)
-
-	segments := make([]string, 0, 5)
-	if label := modelInfo.Label(sym.Sep); label != "" {
-		text := label
-		if !layout.Narrow {
-			text = sym.IconModel + " " + label
-		}
-		segments = append(segments, apply(r.theme.StatusModel, text))
-	}
-	if level := parseThinkingLevel(snap.Session.ThinkingLevel); level != "" && !layout.Narrow {
-		segments = append(segments, apply(r.theme.Dim, level))
-	}
-	if usage.Known && !layout.Micro {
-		segments = append(segments, apply(r.contextStyle(usage), sym.IconContext+" "+usage.Label()))
-	}
-	if agents := len(snap.Subagents); agents > 0 && !layout.Narrow {
-		segments = append(segments, apply(r.theme.Muted, sym.IconAgents+" "+strconv.Itoa(agents)))
-	}
-	if queued := snap.Session.QueuedMessageCount; queued > 0 {
-		segments = append(segments, apply(r.theme.Warning, strconv.Itoa(queued)+" queued"))
-	}
-	if len(segments) == 0 {
-		return nil
-	}
-
-	row := padding(layout.Inset) + strings.Join(segments, apply(r.theme.Dim, sym.Sep))
-	return []string{fit(row, layout.Width, sym.Ellipsis)}
+	return r.StatusRuleRows(snap, StatusInfo{}, width)
 }
 
 // FooterInfo carries the environment facts the view cannot read for itself.
@@ -341,6 +308,7 @@ func (r Renderer) footerStats(snap model.Snapshot, info FooterInfo, layout Layou
 type StatusLine struct {
 	widget
 	snap model.Snapshot
+	info StatusInfo
 }
 
 // NewStatusLine constructs a status line.
@@ -351,9 +319,18 @@ func NewStatusLine(theme Theme, opts Options) *StatusLine {
 // SetSnapshot installs the state to summarize.
 func (s *StatusLine) SetSnapshot(snap model.Snapshot) { s.snap = snap }
 
+// SetInfo installs host facts used by the Hermes status rule.
+func (s *StatusLine) SetInfo(info StatusInfo) {
+	s.info = info
+	s.Invalidate()
+}
+
+// Info returns the current host facts.
+func (s *StatusLine) Info() StatusInfo { return s.info }
+
 // Render implements component.Component.
 func (s *StatusLine) Render(width int) component.Frame {
-	return s.frame(width, s.r.StatusLineRows(s.snap, width))
+	return s.frame(width, s.r.StatusRuleRows(s.snap, s.info, width))
 }
 
 // Footer renders the two-row session footer beneath the editor.

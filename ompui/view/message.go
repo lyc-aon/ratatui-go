@@ -2,7 +2,6 @@ package view
 
 import (
 	"encoding/json"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -32,60 +31,6 @@ const (
 	genericAbortMessage = "Request was aborted"
 )
 
-// codeFencePattern matches an opening or closing fence: three or more
-// backticks/tildes plus an info string.
-var codeFencePattern = regexp.MustCompile("^ {0,3}(`{3,}|~{3,})(.*)$")
-
-// tableDelimiterPattern matches a GFM table delimiter row (`| --- | :--: |`,
-// with or without bounding pipes). The header row alone renders as prose; this
-// delimiter is what makes markdown lay a table out.
-var tableDelimiterPattern = regexp.MustCompile(`^ {0,3}\|?(?:[ \t]*:?-+:?[ \t]*\|)+[ \t]*:?-*:?[ \t]*$`)
-
-// mermaidInfoPattern matches a mermaid fence info string.
-var mermaidInfoPattern = regexp.MustCompile(`^mermaid\b`)
-
-// HasReflowingMarkdown reports whether text currently contains markdown whose
-// layout is not yet permanent: an open mermaid fence (the diagram reshapes as
-// source arrives) or a GFM table (columns re-align as rows arrive).
-//
-// This is what keeps a streaming table out of native scrollback. Committing an
-// intermediate layout strands a stale fragment in immutable history that only a
-// full repaint can clear, so such a block stays wholly repaintable and commits
-// once, at its final layout.
-//
-// Fence-aware: table delimiters inside ordinary fenced code (shell pipes, ASCII
-// separators, doc examples) are ignored, so a long streamed code block is never
-// held back. A delimiter counts only directly under a pipe-bearing header row,
-// outside any code fence.
-func HasReflowingMarkdown(text string) bool {
-	fence := ""
-	prev := ""
-	for _, line := range strings.Split(text, "\n") {
-		match := codeFencePattern.FindStringSubmatch(line)
-		if fence != "" {
-			// Inside a code block: only a bare matching closing fence ends it.
-			if match != nil && strings.TrimSpace(match[2]) == "" &&
-				match[1][0] == fence[0] && len(match[1]) >= len(fence) {
-				fence = ""
-			}
-			continue
-		}
-		if match != nil {
-			if mermaidInfoPattern.MatchString(strings.TrimSpace(match[2])) {
-				return true
-			}
-			fence = match[1]
-			prev = ""
-			continue
-		}
-		if strings.Contains(prev, "|") && tableDelimiterPattern.MatchString(line) {
-			return true
-		}
-		prev = line
-	}
-	return false
-}
-
 // messageHasReflowingMarkdown reports whether any text block of a message is
 // still reflowing.
 func messageHasReflowingMarkdown(msg model.Message) bool {
@@ -110,9 +55,9 @@ type Renderer struct {
 	thinkingTint  func(string) string
 	syntheticTint func(string) string
 	userTint      func(string) string
-	// gutter is the fixed user-marker column width, sized to the widest marker
-	// so consecutive turns with different markers stay column-aligned.
-	gutter int
+	// railWidth is the cell width of one tree stem level. Every level costs the
+	// same, so a deep trail's rows stay column-aligned under both glyph presets.
+	railWidth int
 }
 
 // NewRenderer binds a theme and options into a row producer.
@@ -123,8 +68,7 @@ func NewRenderer(theme Theme, opts Options) Renderer {
 	r.thinkingTint = lineTinter(compose(theme.Italic, theme.ThinkingText))
 	r.syntheticTint = lineTinter(theme.SyntheticText)
 	r.userTint = lineTinter(theme.UserText)
-	sym := theme.Symbols
-	r.gutter = 1 + maxGlyphWidth(sym.UserCursor, sym.SteerCursor, sym.SyntheticCursor)
+	r.railWidth = maxGlyphWidth(theme.Symbols.TreeVertical) + 1
 	return r
 }
 
@@ -281,11 +225,29 @@ func ClassifyMessage(msg model.Message) MessageKind {
 }
 
 // messageExtras are the fields the Go frontend reads out of the preserved raw
-// payload because they are not part of the decoded core shape.
+// payload because they are not part of the decoded core shape. The names match
+// Hermes' Msg so a core that already speaks to the TypeScript frontend needs no
+// translation layer.
 type messageExtras struct {
 	Steering   bool   `json:"steering"`
 	CustomType string `json:"customType"`
 	Display    *bool  `json:"display"`
+
+	// Kind is the block kind: event, diff, slash, trail, intro, or panel. It
+	// drives both the visual band and the grouping gaps.
+	Kind string `json:"kind"`
+
+	// Todos carries a plan block. TodoCollapsedByDefault archives a settled plan
+	// behind its chevron; TodoIncomplete flags a turn that ended with open tasks.
+	Todos                  json.RawMessage `json:"todos"`
+	TodoCollapsedByDefault bool            `json:"todoCollapsedByDefault"`
+	TodoIncomplete         bool            `json:"todoIncomplete"`
+
+	// ThinkingTokens and ToolTokens are the core's reported token counts for a
+	// turn's working area. Zero reasoning tokens fall back to an estimate; zero
+	// tool tokens simply drop the suffix, because guessing them would be a lie.
+	ThinkingTokens int `json:"thinkingTokens"`
+	ToolTokens     int `json:"toolTokens"`
 }
 
 func readExtras(msg model.Message) messageExtras {
@@ -295,6 +257,14 @@ func readExtras(msg model.Message) messageExtras {
 	}
 	return extras
 }
+
+// Hermes block kinds carried in messageExtras.Kind.
+const (
+	blockKindEvent = "event"
+	blockKindDiff  = "diff"
+	blockKindSlash = "slash"
+	blockKindTrail = "trail"
+)
 
 // messageText concatenates the text blocks of a message.
 func messageText(msg model.Message) string {
@@ -331,23 +301,34 @@ func (r Renderer) UserMessage(msg model.Message, width int) []string {
 	}
 
 	layout := r.opts.layout(width)
-	bodyWidth := layout.Prose - r.gutter
+	gutter := ansitext.VisibleWidth(marker) + 1
+	bodyWidth := layout.Prose - gutter
 	if bodyWidth < 1 {
 		bodyWidth = 1
 	}
 
-	rows := renderMarkdown(messageText(msg), mdTheme, bodyWidth)
-	for i, row := range rows {
-		rows[i] = tint(row)
+	// A slash echo is a command the operator typed, not prose the model will
+	// read: it keeps the operator gutter but renders verbatim and quiet, so
+	// markdown inside a command argument is never reinterpreted.
+	var rows []string
+	if extras.Kind == blockKindSlash {
+		if text := strings.TrimSpace(messageText(msg)); text != "" {
+			rows = r.wrapPlain(text, bodyWidth, r.theme.Muted)
+		}
+	} else {
+		rows = renderMarkdown(messageText(msg), mdTheme, bodyWidth)
+		for i, row := range rows {
+			rows[i] = tint(row)
+		}
+		rows = append(rows, r.imageRows(msg.Content, bodyWidth)...)
 	}
-	rows = append(rows, r.imageRows(msg.Content, bodyWidth)...)
 	if len(rows) == 0 {
 		return nil
 	}
 
 	inset := padding(layout.Inset)
-	head := inset + apply(markerStyle, marker) + padding(r.gutter-ansitext.VisibleWidth(marker))
-	continuation := inset + padding(r.gutter)
+	head := inset + apply(markerStyle, marker) + padding(gutter-ansitext.VisibleWidth(marker))
+	continuation := inset + padding(gutter)
 
 	out := make([]string, len(rows))
 	for i, row := range rows {
@@ -368,14 +349,188 @@ func (r Renderer) UserMessage(msg model.Message, width int) []string {
 	return out
 }
 
-// AssistantMessage renders a model turn: prose flush in the reading column,
-// reasoning behind a quiet rule, images, and any terminal error.
+// AssistantMessage renders a model turn.
+//
+// Under an explicit detail mode the turn takes Hermes' shape: the working-area
+// trail (reasoning + grouped tool calls) first, then a `Response` separator, then
+// the answer prose. Without one it keeps OMP's historical layout — reasoning
+// behind a quiet rule, inline with the prose — so hosts that never opted into
+// section modes see no change.
 //
 // frame drives the reasoning pulse while reasoning is hidden and still
 // streaming; it is a plain counter, never a wall clock.
 func (r Renderer) AssistantMessage(msg model.Message, width int, frame uint64) []string {
+	if r.opts.FocusView || !r.opts.detailModesExplicit() {
+		return r.legacyAssistantMessage(msg, width, frame)
+	}
+	trail := r.TrailRows(r.MessageTrail(msg), width, frame)
+	body := r.AssistantBody(msg, width, len(trail) > 0)
+	switch {
+	case len(trail) == 0:
+		return body
+	case len(body) == 0:
+		return trail
+	default:
+		return append(append(trail, ""), body...)
+	}
+}
+
+// AssistantBody renders only the answer half of a model turn: prose, images, and
+// any terminal error. responseSeparator prepends Hermes' `└─ Response` rule,
+// which is what keeps a final answer from reading as one more trail row.
+//
+// The transcript renders the trail as its own block so a running call keeps its
+// own live region, and calls this for the answer.
+func (r Renderer) AssistantBody(msg model.Message, width int, responseSeparator bool) []string {
 	layout := r.opts.layout(width)
 	inset := padding(layout.Inset)
+	focus := r.opts.FocusView
+
+	var out []string
+	hasProse, hasToolCalls := false, false
+	for _, block := range msg.Content {
+		switch block.Kind {
+		case model.ContentToolCall:
+			hasToolCalls = true
+		case model.ContentText:
+			text := strings.TrimSpace(block.Text)
+			if text == "" {
+				continue
+			}
+			hasProse = true
+			out = append(out, indentRows(renderMarkdown(text, r.theme.Markdown, layout.Prose), inset)...)
+		}
+	}
+	if !focus {
+		out = append(out, indentRows(r.imageRows(msg.Content, layout.Prose), inset)...)
+	}
+	if responseSeparator && hasProse {
+		out = append([]string{inset + r.responseSeparatorRow(layout), ""}, out...)
+	}
+
+	abortsSuppressed := hasToolCalls && !focus
+	switch {
+	case msg.StopReason == "aborted" && !abortsSuppressed && shouldRenderAbort(msg.Error):
+		if len(out) > 0 {
+			out = append(out, "")
+		}
+		out = append(out, inset+apply(r.theme.Error, r.theme.Symbols.Aborted+" "+abortLabel(msg.Error)))
+	case msg.StopReason == "error":
+		out = append(out, r.errorRows(msg.Error, layout, len(out) > 0)...)
+	}
+	if msg.Error != "" && shouldRenderAbort(msg.Error) &&
+		msg.StopReason != "aborted" && msg.StopReason != "error" {
+		out = append(out, r.errorRows(msg.Error, layout, len(out) > 0)...)
+	}
+	return out
+}
+
+// responseSeparatorRow is the rule between a turn's working area and its answer.
+func (r Renderer) responseSeparatorRow(layout Layout) string {
+	row := apply(r.theme.Border, r.theme.Symbols.TreeLast+" ") + apply(r.theme.Dim, "Response")
+	return fit(row, layout.Body, r.theme.Symbols.Ellipsis)
+}
+
+// assistantBodyRenders reports whether [Renderer.AssistantBody] would draw a row.
+// A turn that has only requested tools has no answer yet, and a block that draws
+// nothing must not exist: the transcript would otherwise reserve a separator for
+// it and strand a blank row between the trail above and the next turn below.
+func (r Renderer) assistantBodyRenders(msg model.Message) bool {
+	hasToolCalls := false
+	for _, block := range msg.Content {
+		switch block.Kind {
+		case model.ContentText:
+			if strings.TrimSpace(block.Text) != "" {
+				return true
+			}
+		case model.ContentImage:
+			if !r.opts.FocusView {
+				return true
+			}
+		case model.ContentToolCall:
+			hasToolCalls = true
+		}
+	}
+	switch {
+	case msg.StopReason == "aborted":
+		return (!hasToolCalls || r.opts.FocusView) && shouldRenderAbort(msg.Error)
+	case msg.StopReason == "error":
+		return true
+	}
+	return msg.Error != "" && shouldRenderAbort(msg.Error)
+}
+
+// MessageTrail extracts a message's working area: its reasoning and the calls it
+// requested. Cards carry only what the call block itself knows; the transcript
+// folds in live executions and results before rendering.
+func (r Renderer) MessageTrail(msg model.Message) Trail {
+	extras := readExtras(msg)
+	trail := Trail{ReasoningTokens: extras.ThinkingTokens, ToolTokens: extras.ToolTokens}
+
+	var reasoning strings.Builder
+	for _, block := range msg.Content {
+		switch block.Kind {
+		case model.ContentThinking:
+			text := strings.TrimSpace(block.Text)
+			if text == "" {
+				continue
+			}
+			if reasoning.Len() > 0 {
+				reasoning.WriteString("\n\n")
+			}
+			reasoning.WriteString(text)
+		case model.ContentRedactedThinking:
+			trail.ReasoningRedacted = true
+		case model.ContentToolCall:
+			if block.ToolCall != nil {
+				trail.Cards = append(trail.Cards, ToolCardFrom(block.ToolCall, nil, nil))
+			}
+		}
+	}
+	trail.Reasoning = reasoning.String()
+	trail.ReasoningActive = reasoningIsActive(msg)
+	return trail
+}
+
+// reasoningIsActive reports that the model is reasoning right now: the turn is
+// still streaming and its trailing block is reasoning. A tool call in the message
+// ends it — the work has moved to the tool.
+func reasoningIsActive(msg model.Message) bool {
+	if !msg.Streaming {
+		return false
+	}
+	active := false
+	for _, block := range msg.Content {
+		switch block.Kind {
+		case model.ContentToolCall:
+			return false
+		case model.ContentText:
+			if strings.TrimSpace(block.Text) != "" {
+				active = false
+			}
+		case model.ContentThinking:
+			if strings.TrimSpace(block.Text) != "" {
+				active = true
+			}
+		case model.ContentRedactedThinking:
+			// The provider can redact an in-flight reasoning block. It is still
+			// active work, so it earns the same honest live state.
+			active = true
+		}
+	}
+	return active
+}
+
+// legacyAssistantMessage is OMP's pre-detail-mode turn layout, retained for
+// hosts that never set an explicit section mode and for focus view, which keeps
+// the answer above the failure backstop it belongs to.
+func (r Renderer) legacyAssistantMessage(msg model.Message, width int, frame uint64) []string {
+	if r.opts.FocusView {
+		return r.AssistantBody(msg, width, false)
+	}
+	layout := r.opts.layout(width)
+	inset := padding(layout.Inset)
+	thinkingMode := r.opts.thinkingMode()
 	var out []string
 
 	hasVisible := false
@@ -386,7 +541,11 @@ func (r Renderer) AssistantMessage(msg model.Message, width int, frame uint64) [
 				hasVisible = true
 			}
 		case model.ContentThinking:
-			if !r.opts.HideThinking && strings.TrimSpace(block.Text) != "" {
+			if thinkingMode != DetailModeHidden && strings.TrimSpace(block.Text) != "" {
+				hasVisible = true
+			}
+		case model.ContentRedactedThinking:
+			if thinkingMode != DetailModeHidden {
 				hasVisible = true
 			}
 		}
@@ -404,15 +563,26 @@ func (r Renderer) AssistantMessage(msg model.Message, width int, frame uint64) [
 			}
 			out = append(out, indentRows(renderMarkdown(text, r.theme.Markdown, layout.Prose), inset)...)
 		case model.ContentThinking:
-			if r.opts.HideThinking || strings.TrimSpace(block.Text) == "" {
+			if strings.TrimSpace(block.Text) == "" {
 				continue
 			}
-			out = append(out, r.ThinkingRows(block.Text, width)...)
-			if hasVisibleContentAfter(msg.Content[i+1:], r.opts.HideThinking) {
+			rows := r.thinkingSectionRows(block.Text, width, thinkingMode, false)
+			if len(rows) == 0 {
+				continue
+			}
+			out = append(out, rows...)
+			if hasVisibleContentAfter(msg.Content[i+1:], thinkingMode) {
 				out = append(out, "")
 			}
 		case model.ContentRedactedThinking:
-			out = append(out, inset+apply(r.theme.Dim, r.theme.Symbols.QuoteBar+" reasoning redacted by provider"))
+			rows := r.thinkingSectionRows("", width, thinkingMode, true)
+			if len(rows) == 0 {
+				continue
+			}
+			out = append(out, rows...)
+			if hasVisibleContentAfter(msg.Content[i+1:], thinkingMode) {
+				out = append(out, "")
+			}
 		}
 	}
 
@@ -425,16 +595,14 @@ func (r Renderer) AssistantMessage(msg model.Message, width int, frame uint64) [
 
 	out = append(out, indentRows(r.imageRows(msg.Content, layout.Prose), inset)...)
 
-	if !hasToolCalls {
-		switch {
-		case msg.StopReason == "aborted" && shouldRenderAbort(msg.Error):
-			if len(out) > 0 {
-				out = append(out, "")
-			}
-			out = append(out, inset+apply(r.theme.Error, r.theme.Symbols.Aborted+" "+abortLabel(msg.Error)))
-		case msg.StopReason == "error":
-			out = append(out, r.errorRows(msg.Error, layout, len(out) > 0)...)
+	switch {
+	case msg.StopReason == "aborted" && !hasToolCalls && shouldRenderAbort(msg.Error):
+		if len(out) > 0 {
+			out = append(out, "")
 		}
+		out = append(out, inset+apply(r.theme.Error, r.theme.Symbols.Aborted+" "+abortLabel(msg.Error)))
+	case msg.StopReason == "error":
+		out = append(out, r.errorRows(msg.Error, layout, len(out) > 0)...)
 	}
 	if msg.Error != "" && shouldRenderAbort(msg.Error) &&
 		msg.StopReason != "aborted" && msg.StopReason != "error" {
@@ -446,7 +614,7 @@ func (r Renderer) AssistantMessage(msg model.Message, width int, frame uint64) [
 // hasVisibleContentAfter reports whether any later block still renders, so a
 // reasoning block only pays for a trailing blank row when something follows it
 // inside the same message.
-func hasVisibleContentAfter(rest []model.ContentBlock, hideThinking bool) bool {
+func hasVisibleContentAfter(rest []model.ContentBlock, thinkingMode DetailMode) bool {
 	for _, block := range rest {
 		switch block.Kind {
 		case model.ContentText:
@@ -454,7 +622,11 @@ func hasVisibleContentAfter(rest []model.ContentBlock, hideThinking bool) bool {
 				return true
 			}
 		case model.ContentThinking:
-			if !hideThinking && strings.TrimSpace(block.Text) != "" {
+			if thinkingMode != DetailModeHidden && strings.TrimSpace(block.Text) != "" {
+				return true
+			}
+		case model.ContentRedactedThinking:
+			if thinkingMode != DetailModeHidden {
 				return true
 			}
 		}
@@ -466,13 +638,16 @@ func hasVisibleContentAfter(rest []model.ContentBlock, hideThinking bool) bool {
 // only while the turn is still streaming, no tool call has started, and the
 // trailing block is reasoning — i.e. the model is thinking right now.
 func (r Renderer) shouldPulseThinking(msg model.Message) bool {
-	if !r.opts.HideThinking || !msg.Streaming {
+	if r.opts.FocusView || r.opts.thinkingMode() != DetailModeHidden || !msg.Streaming {
 		return false
 	}
 	tail := ""
 	for _, block := range msg.Content {
 		switch block.Kind {
 		case model.ContentToolCall:
+			// A hidden running tool supplies its own generic pulse. A visible
+			// tool card supplies a running status, so neither case needs a
+			// duplicate reasoning pulse.
 			return false
 		case model.ContentText:
 			if strings.TrimSpace(block.Text) != "" {
@@ -482,6 +657,11 @@ func (r Renderer) shouldPulseThinking(msg model.Message) bool {
 			if strings.TrimSpace(block.Text) != "" {
 				tail = "thinking"
 			}
+		case model.ContentRedactedThinking:
+			// The provider can explicitly redact an in-flight reasoning block.
+			// It is still active work, so hidden mode needs the same honest
+			// pulse as ordinary reasoning rather than silently going blank.
+			tail = "thinking"
 		}
 	}
 	return tail == "thinking"
@@ -494,6 +674,33 @@ func (r Renderer) ThinkingPulse(frame uint64) string {
 		return apply(r.theme.ThinkingText, "thinking")
 	}
 	return apply(r.theme.ThinkingText, frames[frameIndex(frame, frames)])
+}
+
+// thinkingSectionRows is OMP's reasoning body: full prose behind a quiet rule.
+// Only the legacy layout reaches it — an explicit detail mode renders reasoning
+// as a Thinking panel inside the trail tree instead.
+func (r Renderer) thinkingSectionRows(text string, width int, mode DetailMode, redacted bool) []string {
+	if mode == DetailModeHidden {
+		return nil
+	}
+	if redacted {
+		layout := r.opts.layout(width)
+		return []string{padding(layout.Inset) + apply(r.theme.Dim, r.theme.Symbols.QuoteBar+" reasoning redacted by provider")}
+	}
+	return r.ThinkingRows(text, width)
+}
+
+func detailChevron(symbols Symbols, expanded bool) string {
+	if symbols.Rule == "-" {
+		if expanded {
+			return "v"
+		}
+		return ">"
+	}
+	if expanded {
+		return "▾"
+	}
+	return "▸"
 }
 
 // ThinkingRows renders a visible reasoning body behind a dim vertical rule.
@@ -522,19 +729,30 @@ func (r Renderer) ThinkingRows(text string, width int) []string {
 
 // errorRows renders a turn-ending provider error, bounded so a proxy's HTML
 // error page cannot become the transcript.
+//
+// The `Error: ` label costs cells too, so the message is budgeted against what
+// remains after it. Below that the label wins and the message sheds: an operator
+// on a 20-column pane needs to know a turn failed more than they need the fourth
+// word of the reason.
 func (r Renderer) errorRows(message string, layout Layout, spaceBefore bool) []string {
-	body := previewLines(message, maxTranscriptErrorLines, layout.Body-2, r.theme.Symbols.Ellipsis)
+	const label = "Error: "
+	budget := layout.Body - len(label)
+	if budget < 1 {
+		budget = 1
+	}
+	body := previewLines(message, maxTranscriptErrorLines, budget, r.theme.Symbols.Ellipsis)
 	if len(body) == 0 {
 		body = []string{"Unknown error"}
 	}
 	inset := padding(layout.Inset)
+	ellipsis := r.theme.Symbols.Ellipsis
 	out := make([]string, 0, len(body)+1)
 	if spaceBefore {
 		out = append(out, "")
 	}
-	out = append(out, inset+apply(r.theme.Error, "Error: "+body[0]))
+	out = append(out, inset+fit(apply(r.theme.Error, label+body[0]), layout.Body, ellipsis))
 	for _, line := range body[1:] {
-		out = append(out, inset+"  "+apply(r.theme.Error, line))
+		out = append(out, inset+fit("  "+apply(r.theme.Error, line), layout.Body, ellipsis))
 	}
 	return out
 }
@@ -603,6 +821,9 @@ func imageFallbackLabel(req ImageRequest) string {
 // bounded body. The rule earns its ink here — a context boundary is exactly the
 // place a reader needs to know the history above was rewritten.
 func (r Renderer) SummaryMessage(msg model.Message, width int) []string {
+	if r.opts.FocusView {
+		return nil
+	}
 	layout := r.opts.layout(width)
 	label := "context compacted"
 	if msg.Role == "branchSummary" {
@@ -625,15 +846,43 @@ func (r Renderer) SummaryMessage(msg model.Message, width int) []string {
 	return out
 }
 
-// CustomMessage renders an extension or hook message the Go frontend has no
-// dedicated view for. It never drops content silently: the custom type is
-// labelled, the body renders as markdown, and a collapsed body states how many
-// lines are hidden.
+// CustomMessage renders every block the transcript has no first-class view for.
+//
+// Hermes' own block kinds get their own voice — a timeline event is a dim marker,
+// a diff segment is a patch, a slash echo is a quiet command line, a plan is a
+// todo panel, a long system note collapses behind a chevron. Anything genuinely
+// unknown still never drops content silently: the custom type is labelled, the
+// body renders as markdown, and a collapsed body states how many lines it hid.
 func (r Renderer) CustomMessage(msg model.Message, width int) []string {
+	if r.opts.FocusView {
+		return nil
+	}
 	extras := readExtras(msg)
 	if extras.Display != nil && !*extras.Display {
 		return nil
 	}
+	layout := r.opts.layout(width)
+	inset := padding(layout.Inset)
+	text := strings.TrimSpace(messageText(msg))
+
+	if rows := r.TodoBlockRows(msg, width); rows != nil {
+		return rows
+	}
+	switch extras.Kind {
+	case blockKindEvent:
+		return r.eventRow(text, layout)
+	case blockKindDiff:
+		return r.diffRows(messageText(msg), layout)
+	case blockKindTrail:
+		// A trail block with no plan, reasoning, or calls carries only a token
+		// tally. It draws nothing rather than an empty gutter row, which keeps it
+		// transparent to the grouping gaps.
+		return nil
+	}
+	if msg.Role == "system" && r.opts.detailModesExplicit() {
+		return r.systemNoteRows(text, layout)
+	}
+
 	label := extras.CustomType
 	if label == "" {
 		label = msg.Role
@@ -641,16 +890,11 @@ func (r Renderer) CustomMessage(msg model.Message, width int) []string {
 	if label == "" {
 		label = "message"
 	}
-
-	layout := r.opts.layout(width)
-	inset := padding(layout.Inset)
 	out := []string{inset + apply(r.theme.Muted, apply(r.theme.Bold, label))}
-
-	text := strings.TrimSpace(messageText(msg))
 	if text == "" {
 		return out
 	}
-	if !r.opts.ToolsExpanded {
+	if !r.opts.toolsExpanded() {
 		lines := strings.Split(text, "\n")
 		if len(lines) > maxTranscriptErrorLines {
 			hidden := len(lines) - maxTranscriptErrorLines
@@ -659,4 +903,39 @@ func (r Renderer) CustomMessage(msg model.Message, width int) []string {
 		}
 	}
 	return append(out, indentRows(renderMarkdown(text, r.theme.Markdown, layout.Prose-1), inset+" ")...)
+}
+
+// systemCollapseChars is where a system note (a system prompt, an AGENTS.md
+// dump) stops being a note and becomes a wall. Past it only the first line shows,
+// behind a collapsed chevron that states the size.
+const systemCollapseChars = 400
+
+// systemNoteRows renders a system note behind the assistant gutter: a short one
+// reads inline, a long one collapses to its first line plus a character count.
+func (r Renderer) systemNoteRows(text string, layout Layout) []string {
+	if text == "" {
+		return nil
+	}
+	inset := padding(layout.Inset)
+	if len(text) <= systemCollapseChars {
+		marker := r.theme.Symbols.SyntheticCursor
+		gutterWidth := maxGlyphWidth(marker) + 1
+		gutter := apply(r.theme.Muted, marker+padding(gutterWidth-maxGlyphWidth(marker)))
+		continuation := padding(gutterWidth)
+		body := r.wrapPlain(text, layout.Prose-gutterWidth, r.theme.Muted)
+		out := make([]string, 0, len(body))
+		for i, row := range body {
+			prefix := continuation
+			if i == 0 {
+				prefix = gutter
+			}
+			out = append(out, trimPad(inset+prefix+row))
+		}
+		return out
+	}
+	first := flattenLine(strings.SplitN(text, "\n", 2)[0])
+	head := apply(r.theme.Accent, detailChevron(r.theme.Symbols, false)+" ") +
+		apply(r.theme.Muted, compactPreview(first, 120, r.theme.Symbols.Ellipsis)) +
+		apply(r.theme.Dim, r.theme.Symbols.Sep+formatNumber(int64(len(text)))+" chars")
+	return []string{inset + fit(head, layout.Body, r.theme.Symbols.Ellipsis)}
 }

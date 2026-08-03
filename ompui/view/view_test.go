@@ -493,3 +493,427 @@ func TestTranscriptCommittedRowsConcurrentWithRender(t *testing.T) {
 	}
 	writer.Wait()
 }
+
+func TestRendererHermesDetailModes(t *testing.T) {
+	thinking := model.Message{
+		Role:      "assistant",
+		Streaming: true,
+		Content:   []model.ContentBlock{{Kind: model.ContentThinking, Text: "reasoning-body"}},
+	}
+	card := view.ToolCard{
+		ID:        "call-1",
+		Name:      "inspect",
+		Intent:    "useful intent",
+		Result:    json.RawMessage(`"tool-body"`),
+		HasResult: true,
+	}
+
+	tests := []struct {
+		name         string
+		opts         view.Options
+		wantThinking string
+		wantTool     string
+	}{
+		{
+			name:         "hidden",
+			opts:         view.Options{Tight: true, ThinkingMode: view.DetailModeHidden, ToolsMode: view.DetailModeHidden},
+			wantThinking: "x",
+			wantTool:     "",
+		},
+		{
+			name:         "collapsed",
+			opts:         view.Options{Tight: true, ThinkingMode: view.DetailModeCollapsed, ToolsMode: view.DetailModeCollapsed},
+			wantThinking: "`- > Thinking  ~4 tokens",
+			wantTool:     "`- > Tool calls (1)",
+		},
+		{
+			name: "expanded",
+			opts: view.Options{Tight: true, ThinkingMode: view.DetailModeExpanded, ToolsMode: view.DetailModeExpanded},
+			wantThinking: "`- v Thinking  ~4 tokens\n" +
+				"  `- reasoning-body",
+			wantTool: "`- v Tool calls (1)\n" +
+				"  `- * Inspect(\"useful intent\")\n" +
+				"    `- Result:\n" +
+				"       tool-body",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			r := view.NewRenderer(view.MonoTheme(), test.opts)
+			gotThinking := strip(strings.Join(r.AssistantMessage(thinking, 80, 2), "\n"))
+			if gotThinking != test.wantThinking {
+				t.Fatalf("thinking rows = %q, want %q", gotThinking, test.wantThinking)
+			}
+			gotTool := strip(strings.Join(r.ToolRows(card, 80), "\n"))
+			if gotTool != test.wantTool {
+				t.Fatalf("tool rows = %q, want %q", gotTool, test.wantTool)
+			}
+			if test.opts.ThinkingMode == view.DetailModeHidden && strings.Contains(gotThinking, "reasoning-body") {
+				t.Fatalf("hidden reasoning leaked: %q", gotThinking)
+			}
+			if test.opts.ToolsMode == view.DetailModeHidden &&
+				(strings.Contains(gotTool, "inspect") || strings.Contains(gotTool, "tool-body")) {
+				t.Fatalf("hidden tool leaked: %q", gotTool)
+			}
+		})
+	}
+}
+
+func TestHiddenToolFailureBackstop(t *testing.T) {
+	failed := view.ToolCard{
+		ID:        "call-1",
+		Name:      "private-tool",
+		Result:    json.RawMessage(`"private failure detail"`),
+		HasResult: true,
+		IsError:   true,
+	}
+	hidden := view.NewRenderer(view.MonoTheme(), view.Options{
+		Tight: true, ToolsMode: view.DetailModeHidden,
+	})
+	got := strip(strings.Join(hidden.ToolRows(failed, 80), "\n"))
+	if got != "!! Tool call failed" {
+		t.Fatalf("hidden failure = %q", got)
+	}
+	if strings.Contains(got, "private-tool") || strings.Contains(got, "private failure detail") {
+		t.Fatalf("hidden failure leaked tool content: %q", got)
+	}
+
+	collapsed := view.NewRenderer(view.MonoTheme(), view.Options{
+		Tight: true, ToolsMode: view.DetailModeCollapsed,
+	})
+	got = strip(strings.Join(collapsed.ToolRows(failed, 80), "\n"))
+	if got != "`- > Tool calls (1)" {
+		t.Fatalf("collapsed failure = %q", got)
+	}
+	if strings.Contains(got, "private-tool") || strings.Contains(got, "private failure detail") {
+		t.Fatalf("collapsed failure leaked tool content: %q", got)
+	}
+}
+
+func TestDetailModesStayBoundedAtNarrowWidths(t *testing.T) {
+	thinking := model.Message{
+		Role:      "assistant",
+		Streaming: true,
+		Content: []model.ContentBlock{{
+			Kind: model.ContentThinking,
+			Text: "reasoning words that deliberately need wrapping",
+		}},
+	}
+	card := view.ToolCard{
+		ID:        "call-1",
+		Name:      "inspect",
+		Intent:    "a detailed intent that needs truncation",
+		Result:    json.RawMessage(`"tool body that deliberately needs wrapping"`),
+		HasResult: true,
+	}
+	for _, mode := range []view.DetailMode{
+		view.DetailModeHidden,
+		view.DetailModeCollapsed,
+		view.DetailModeExpanded,
+	} {
+		r := view.NewRenderer(view.MonoTheme(), view.Options{
+			Tight: true, ThinkingMode: mode, ToolsMode: mode,
+		})
+		for _, width := range []int{12, 30} {
+			rows := append(r.AssistantMessage(thinking, width, 1), r.ToolRows(card, width)...)
+			assertNoNewlineOrOverflow(t, rows, width)
+		}
+	}
+}
+
+func TestTranscriptDetailOptionChangesInvalidateRowsAndTail(t *testing.T) {
+	call := &model.ToolCall{ID: "call-1", Name: "visible-tool", Intent: "visible intent"}
+	snap := model.Snapshot{
+		Generation: 1,
+		Messages: []model.Message{{
+			Role: "assistant",
+			Content: []model.ContentBlock{
+				{Kind: model.ContentThinking, Text: "reasoning-secret"},
+				{Kind: model.ContentToolCall, ToolCall: call},
+			},
+		}},
+		Tools: []model.ToolExecution{{
+			ID: "call-1", Name: "visible-tool", Result: json.RawMessage(`"tool-secret"`),
+		}},
+	}
+	tr := view.NewTranscript(view.MonoTheme(), view.Options{
+		Tight: true, ThinkingMode: view.DetailModeExpanded, ToolsMode: view.DetailModeExpanded,
+	})
+	tr.SetSnapshot(snap)
+	expanded := tr.Render(80)
+	expandedText := strip(strings.Join(expanded.Lines, "\n"))
+	if !strings.Contains(expandedText, "reasoning-secret") || !strings.Contains(expandedText, "tool-secret") {
+		t.Fatalf("expanded details missing: %q", expandedText)
+	}
+
+	tr.SetOptions(view.Options{
+		Tight: true, ThinkingMode: view.DetailModeHidden, ToolsMode: view.DetailModeHidden,
+	})
+	hidden := tr.Render(80)
+	hiddenText := strip(strings.Join(hidden.Lines, "\n"))
+	if strings.Contains(hiddenText, "reasoning-secret") ||
+		strings.Contains(hiddenText, "visible-tool") ||
+		strings.Contains(hiddenText, "tool-secret") {
+		t.Fatalf("stale hidden rows leaked: %q", hiddenText)
+	}
+	if tail := tr.RenderViewportTail(80, 20); len(tail) != 0 {
+		t.Fatalf("hidden viewport tail leaked: %q", strip(strings.Join(tail, "\n")))
+	}
+
+	tr.SetOptions(view.Options{
+		Tight: true, ThinkingMode: view.DetailModeCollapsed, ToolsMode: view.DetailModeCollapsed,
+	})
+	collapsed := tr.Render(80)
+	collapsedText := strip(strings.Join(collapsed.Lines, "\n"))
+	if collapsedText != "|- > Thinking  ~4 tokens\n`- > Tool calls (1)" {
+		t.Fatalf("collapsed rows = %q", collapsedText)
+	}
+	if strings.Contains(collapsedText, "reasoning-secret") || strings.Contains(collapsedText, "tool-secret") {
+		t.Fatalf("collapsed rows leaked body: %q", collapsedText)
+	}
+	tail := strip(strings.Join(tr.RenderViewportTail(80, 20), "\n"))
+	if tail != collapsedText {
+		t.Fatalf("collapsed viewport tail = %q, want %q", tail, collapsedText)
+	}
+
+	// An explicit section mode must survive a status update carrying the legacy
+	// expanded toggle; otherwise SetSnapshot would re-open the card from a stale
+	// cached snapshot.
+	snap.Generation++
+	snap.Status.ToolsExpanded = true
+	tr.SetSnapshot(snap)
+	if tr.Options().ToolsMode != view.DetailModeCollapsed {
+		t.Fatalf("explicit tools mode overwritten: %q", tr.Options().ToolsMode)
+	}
+	if got := strip(strings.Join(tr.Render(80).Lines, "\n")); got != collapsedText {
+		t.Fatalf("status update changed explicit collapsed rows: %q", got)
+	}
+}
+
+func TestTranscriptHiddenDetailPulsesAdvanceWithSnapshot(t *testing.T) {
+	tests := []struct {
+		name string
+		opts view.Options
+		snap model.Snapshot
+	}{
+		{
+			name: "thinking",
+			opts: view.Options{Tight: true, ThinkingMode: view.DetailModeHidden},
+			snap: model.Snapshot{
+				Generation: 1,
+				Messages: []model.Message{{
+					Role:      "assistant",
+					Streaming: true,
+					Content:   []model.ContentBlock{{Kind: model.ContentThinking, Text: "hidden reasoning"}},
+				}},
+			},
+		},
+		{
+			name: "tool",
+			opts: view.Options{Tight: true, ToolsMode: view.DetailModeHidden},
+			snap: model.Snapshot{
+				Generation: 1,
+				Tools: []model.ToolExecution{{
+					ID: "tool-1", Name: "hidden-tool", Running: true,
+					PartialResult: json.RawMessage(`"hidden partial output"`),
+				}},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tr := view.NewTranscript(view.MonoTheme(), test.opts)
+			tr.SetSnapshot(test.snap)
+			first := tr.Render(80)
+			firstText := strip(strings.Join(first.Lines, "\n"))
+			if firstText != "+" {
+				t.Fatalf("first pulse = %q, want +", firstText)
+			}
+			if !first.HasLiveRegion() {
+				t.Fatal("hidden active detail lost its live region")
+			}
+
+			test.snap.Generation++
+			tr.SetSnapshot(test.snap)
+			second := tr.Render(80)
+			secondText := strip(strings.Join(second.Lines, "\n"))
+			if secondText != "x" {
+				t.Fatalf("second pulse = %q, want x", secondText)
+			}
+			if second.Generation == first.Generation {
+				t.Fatal("pulse update reused stale frame generation")
+			}
+			if strings.Contains(secondText, "hidden") {
+				t.Fatalf("hidden content leaked through pulse: %q", secondText)
+			}
+		})
+	}
+}
+
+func TestFocusViewKeepsPromptsFinalTextAndErrors(t *testing.T) {
+	call := &model.ToolCall{ID: "focus-tool", Name: "private-tool", Intent: "private intent"}
+	snap := model.Snapshot{
+		Generation: 1,
+		Messages: []model.Message{
+			textMsg("user", "operator prompt"),
+			{
+				Role:      "assistant",
+				Streaming: true,
+				Content: []model.ContentBlock{
+					{Kind: model.ContentThinking, Text: "private reasoning"},
+					{Kind: model.ContentText, Text: "final answer is streaming"},
+					{Kind: model.ContentImage, Data: "not-an-image", MIMEType: "image/png"},
+					{Kind: model.ContentToolCall, ToolCall: call},
+				},
+			},
+			textMsg("compactionSummary", "private summary"),
+			textMsg("extension.activity", "private activity"),
+			{Role: "assistant", StopReason: "error", Error: "provider failure"},
+		},
+		Tools: []model.ToolExecution{{
+			ID: "focus-tool", Name: "private-tool", Result: json.RawMessage(`"private tool failure"`), IsError: true,
+		}},
+	}
+	tr := view.NewTranscript(view.MonoTheme(), view.Options{
+		Tight: true, ThinkingMode: view.DetailModeExpanded, ToolsMode: view.DetailModeExpanded,
+	})
+	tr.SetSnapshot(snap)
+	if initial := strip(strings.Join(tr.Render(80).Lines, "\n")); !strings.Contains(initial, "private reasoning") ||
+		!strings.Contains(initial, "private tool failure") {
+		t.Fatalf("initial details missing: %q", initial)
+	}
+
+	tr.SetOptions(view.Options{
+		Tight: true, FocusView: true, ThinkingMode: view.DetailModeExpanded, ToolsMode: view.DetailModeExpanded,
+	})
+	focused := tr.Render(80)
+	got := strip(strings.Join(focused.Lines, "\n"))
+	want := "> operator prompt\n\nfinal answer is streaming\n\n!! Tool call failed\n\nError: provider failure"
+	if got != want {
+		t.Fatalf("focus rows = %q, want %q", got, want)
+	}
+	if !focused.HasLiveRegion() {
+		t.Fatal("focus view lost the live final-answer stream")
+	}
+	for _, hidden := range []string{
+		"private reasoning",
+		"private-tool",
+		"private intent",
+		"private tool failure",
+		"private summary",
+		"private activity",
+		"[Image:",
+	} {
+		if strings.Contains(got, hidden) {
+			t.Fatalf("focus view leaked %q in %q", hidden, got)
+		}
+	}
+	if tail := strip(strings.Join(tr.RenderViewportTail(80, 20), "\n")); tail != want {
+		t.Fatalf("focus viewport tail = %q, want %q", tail, want)
+	}
+
+	tr.SetOptions(view.Options{
+		Tight: true, ThinkingMode: view.DetailModeExpanded, ToolsMode: view.DetailModeExpanded,
+	})
+	restored := strip(strings.Join(tr.Render(80).Lines, "\n"))
+	if !strings.Contains(restored, "private reasoning") || !strings.Contains(restored, "private tool failure") {
+		t.Fatalf("focus option change reused hidden rows: %q", restored)
+	}
+}
+
+func TestTranscriptDetailModeTransitionsInvalidateHeightAndRows(t *testing.T) {
+	call := &model.ToolCall{ID: "mode-transition", Name: "shell", Intent: "private command"}
+	snap := model.Snapshot{
+		Generation: 9,
+		Messages: []model.Message{{
+			Role: "assistant",
+			Content: []model.ContentBlock{
+				{Kind: model.ContentThinking, Text: "private reasoning body"},
+				{Kind: model.ContentText, Text: "public answer"},
+				{Kind: model.ContentToolCall, ToolCall: call},
+			},
+		}},
+		Tools: []model.ToolExecution{{
+			ID: "mode-transition", Name: "shell", Result: json.RawMessage(`"private result"`),
+		}},
+	}
+	tr := view.NewTranscript(view.MonoTheme(), view.Options{
+		Tight: true, ThinkingMode: view.DetailModeExpanded, ToolsMode: view.DetailModeExpanded,
+	})
+	tr.SetSnapshot(snap)
+	expanded := tr.Render(60)
+	expandedText := strip(strings.Join(expanded.Lines, "\n"))
+	if !strings.Contains(expandedText, "private reasoning body") || !strings.Contains(expandedText, "private result") {
+		t.Fatalf("expanded rows missing details: %q", expandedText)
+	}
+
+	tr.SetOptions(view.Options{
+		Tight: true, ThinkingMode: view.DetailModeHidden, ToolsMode: view.DetailModeHidden,
+	})
+	hidden := tr.Render(60)
+	hiddenText := strip(strings.Join(hidden.Lines, "\n"))
+	if hidden.Generation == expanded.Generation {
+		t.Fatal("hidden details reused the expanded cached frame")
+	}
+	if hidden.RowCount() >= expanded.RowCount() {
+		t.Fatalf("hidden height = %d, expanded height = %d", hidden.RowCount(), expanded.RowCount())
+	}
+	if hiddenText != "public answer" {
+		t.Fatalf("hidden rows = %q, want public answer only", hiddenText)
+	}
+
+	tr.SetOptions(view.Options{
+		Tight: true, ThinkingMode: view.DetailModeCollapsed, ToolsMode: view.DetailModeCollapsed,
+	})
+	collapsed := tr.Render(60)
+	collapsedText := strip(strings.Join(collapsed.Lines, "\n"))
+	if collapsed.Generation == hidden.Generation {
+		t.Fatal("collapsed details reused the hidden cached frame")
+	}
+	for _, want := range []string{"> Thinking", "> Tool calls (1)", "public answer"} {
+		if !strings.Contains(collapsedText, want) {
+			t.Fatalf("collapsed rows missing %q: %q", want, collapsedText)
+		}
+	}
+	for _, secret := range []string{"private reasoning body", "private result"} {
+		if strings.Contains(collapsedText, secret) {
+			t.Fatalf("collapsed rows leaked %q: %q", secret, collapsedText)
+		}
+	}
+	assertNoNewlineOrOverflow(t, collapsed.Lines, 60)
+}
+
+func TestTranscriptHiddenToolDoesNotConsumeViewportSeam(t *testing.T) {
+	call := &model.ToolCall{ID: "hidden-seam", Name: "shell"}
+	tr := view.NewTranscript(view.MonoTheme(), view.Options{
+		Tight: true, ThinkingMode: view.DetailModeHidden, ToolsMode: view.DetailModeHidden,
+	})
+	tr.SetSnapshot(model.Snapshot{
+		Messages: []model.Message{
+			{Role: "assistant", Content: []model.ContentBlock{
+				{Kind: model.ContentText, Text: "durable answer"},
+				{Kind: model.ContentToolCall, ToolCall: call},
+			}},
+			{Role: "assistant", Streaming: true, Content: []model.ContentBlock{
+				{Kind: model.ContentText, Text: "live answer"},
+			}},
+		},
+		Tools: []model.ToolExecution{{
+			ID: "hidden-seam", Name: "shell", Result: json.RawMessage(`"private result"`),
+		}},
+	})
+	// Consecutive assistant segments share the model band, so they render flush.
+	// The hidden trail between them contributes neither a row nor a separator.
+	frame := tr.Render(60)
+	if got, want := strip(strings.Join(frame.Lines, "\n")), "durable answer\nlive answer"; got != want {
+		t.Fatalf("hidden seam rows = %q, want %q", got, want)
+	}
+	if frame.LiveRegionStart != 1 {
+		t.Fatalf("live region starts at %d, want 1", frame.LiveRegionStart)
+	}
+	if got, want := strip(strings.Join(tr.RenderViewportTail(60, 3), "\n")), "durable answer\nlive answer"; got != want {
+		t.Fatalf("viewport tail = %q, want %q", got, want)
+	}
+}

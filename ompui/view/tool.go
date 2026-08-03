@@ -139,24 +139,34 @@ func (r Renderer) statusGlyph(status toolStatus) (string, StyleFunc) {
 	}
 }
 
-// ToolRows renders one tool card.
-//
-// Collapsed, a card is a header plus at most an inline argument summary and a
-// short output preview — the shape you can skim a hundred of. Expanded, it adds
-// a bounded argument tree and a longer output window. Neither level ever emits
-// unbounded raw JSON.
+// ToolRows renders one tool call at its configured visibility. It is retained as
+// the public single-card helper; Transcript groups adjacent calls into one trail
+// so the header count and tree rails cover the whole run.
 func (r Renderer) ToolRows(card ToolCard, width int) []string {
+	return r.toolRows(card, width, 0)
+}
+
+func (r Renderer) toolRows(card ToolCard, width int, frame uint64) []string {
+	// Existing callers that only use ToolsExpanded retain OMP's historical
+	// bounded preview card. Hermes' grouped trail begins once a host opts into
+	// an explicit detail mode.
+	if !r.opts.FocusView && !r.opts.detailModesExplicit() {
+		return r.legacyToolRows(card, width)
+	}
+	return r.TrailRows(Trail{Cards: []ToolCard{card}}, width, frame)
+}
+
+func (r Renderer) legacyToolRows(card ToolCard, width int) []string {
 	layout := r.opts.layout(width)
 	inset := padding(layout.Inset)
 	status := card.status()
 	glyph, glyphStyle := r.statusGlyph(status)
 
 	out := make([]string, 0, 8)
-	out = append(out, inset+r.toolHeader(card, status, glyph, glyphStyle, layout))
+	out = append(out, inset+r.legacyToolHeader(card, status, glyph, glyphStyle, layout))
 
 	args, argsOK := parseJSON(card.Arguments)
 	bodyIndent := inset + "  "
-
 	if argsOK && r.opts.ToolsExpanded {
 		if rows := r.toolArgTree(args, layout, bodyIndent); len(rows) > 0 {
 			out = append(out, rows...)
@@ -168,21 +178,15 @@ func (r Renderer) ToolRows(card ToolCard, width int) []string {
 			out = append(out, inset+" "+apply(r.theme.Dim, connector+" "+preview))
 		}
 	}
-
-	out = append(out, r.toolBody(card, layout, bodyIndent)...)
-	return out
+	return append(out, r.toolBody(card, layout, bodyIndent)...)
 }
 
-// toolHeader builds the single scannable row every card leads with.
-func (r Renderer) toolHeader(card ToolCard, status toolStatus, glyph string, glyphStyle StyleFunc, layout Layout) string {
+func (r Renderer) legacyToolHeader(card ToolCard, status toolStatus, glyph string, glyphStyle StyleFunc, layout Layout) string {
 	name := card.Name
 	if name == "" {
 		name = "tool"
 	}
 	head := apply(glyphStyle, glyph) + " " + apply(r.theme.ToolTitle, apply(r.theme.Bold, name))
-
-	// The intent is the most useful thing on the row after the tool name, so it
-	// gets the space that remains and the meta cluster gets whatever is left.
 	if card.Intent != "" && !layout.Micro {
 		head += apply(r.theme.Muted, ": "+flattenLine(card.Intent))
 	}
@@ -345,7 +349,7 @@ func (r Renderer) toolJSONBody(text string, layout Layout, indent string) ([]str
 	switch {
 	case truncated:
 		out = append(out, indent+apply(r.theme.Dim, r.theme.Symbols.Ellipsis))
-	case !r.opts.ToolsExpanded:
+	case !r.opts.toolsExpanded():
 		if hint := r.expandHint(); hint != "" {
 			out = append(out, indent+hint)
 		}
@@ -356,7 +360,7 @@ func (r Renderer) toolJSONBody(text string, layout Layout, indent string) ([]str
 // expandHint renders the collapsed-state affordance, or "" when expanded or
 // when the host configured no key label.
 func (r Renderer) expandHint() string {
-	if r.opts.ToolsExpanded || r.opts.ExpandHint == "" {
+	if r.opts.toolsExpanded() || r.opts.ExpandHint == "" {
 		return ""
 	}
 	sym := r.theme.Symbols
